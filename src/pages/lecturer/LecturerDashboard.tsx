@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { gradingAPI } from '@/lib/api';
 import type { LecturerStats } from '@/types';
-import { BookOpen, FileText, ClipboardCheck, ArrowRight, TrendingUp, HelpCircle } from 'lucide-react';
+import { FileText, ClipboardCheck, ArrowRight, TrendingUp, HelpCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export function LecturerDashboard() {

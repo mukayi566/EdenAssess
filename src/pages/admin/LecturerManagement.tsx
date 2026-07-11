@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { lecturersAPI, coursesAPI } from '@/lib/api';
 import type { Lecturer, Course } from '@/types';
 import {
-    Users, Trash2, Plus, Edit3, X, Check, Search, BookOpen, AlertCircle
+    Users, Trash2, Plus, Edit3, X, Check, Search, AlertCircle
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';

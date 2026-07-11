@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { adminAPI } from '@/lib/api';
 import type { AuditEvent, ProvisionLog } from '@/types';
-import { ShieldCheck, Calendar, Users, Eye, HelpCircle, History, Clock, FileSpreadsheet } from 'lucide-react';
+import { ShieldCheck, History, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
 import clsx from 'clsx';
 

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import Papa from 'papaparse';
 import { studentsAPI } from '@/lib/api';
-import type { Student, StudentCSVRow, DeliveryStatus } from '@/types';
+import type { Student, StudentCSVRow } from '@/types';
 import {
-    Upload, Check, AlertOctagon, HelpCircle, RefreshCw, Send,
-    Trash2, Mail, Phone, Search, Users, AlertCircle, Eye, ChevronLeft, ChevronRight
+    Upload, Check, AlertOctagon, RefreshCw, Send,
+    Trash2, Mail, Phone, Search, Users, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -25,8 +25,6 @@ export function StudentRoster() {
     // Password delivery states
     const [deliveryChannels, setDeliveryChannels] = useState<{ sms: boolean; email: boolean }>({ sms: true, email: true });
     const [delivering, setDelivering] = useState(false);
-    const [deliveryMessage, setDeliveryMessage] = useState('');
-
     const fetchStudents = async () => {
         setLoading(true);
         try {

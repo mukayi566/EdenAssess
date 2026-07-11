@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { gradingAPI } from '@/lib/api';
 import type { Submission, SubmissionAnswer } from '@/types';
 import {
-    ClipboardCheck, Search, Filter, ShieldAlert, Award, ChevronRight, X, ArrowLeft, ArrowRight, Save, CheckSquare
+    ClipboardCheck, Search, Award, ChevronRight, X, Save
 } from 'lucide-react';
 import { format } from 'date-fns';
 import clsx from 'clsx';

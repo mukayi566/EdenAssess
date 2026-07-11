@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { assessmentsAPI, coursesAPI, questionsAPI } from '@/lib/api';
 import type { Course, Question, Assessment, AssessmentType, LatePolicy } from '@/types';
 import {
-    FileText, ArrowLeft, ArrowRight, Check, Settings, Shield, Edit, AlertCircle, Info, Calendar, Plus, Trash
+    ArrowLeft, ArrowRight, Check, Shield, Info
 } from 'lucide-react';
 import clsx from 'clsx';
 

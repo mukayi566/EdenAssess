@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { adminAPI } from '@/lib/api';
 import type { CalendarEvent, AssessmentType } from '@/types';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Info, Clock, Square } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, Info, Clock, Square } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from 'date-fns';
 import clsx from 'clsx';
 

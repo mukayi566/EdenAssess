@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { assessmentsAPI } from '@/lib/api';
 import type { Assessment, AssessmentType } from '@/types';
 import {
-    FileText, Plus, Search, Trash2, Edit3, X, HelpCircle, Save, Check, Filter, Calendar, Users, BarChart3, Radio
+    FileText, Plus, Trash2, Check, Filter, Calendar, Users, Radio
 } from 'lucide-react';
 import { format } from 'date-fns';
 import clsx from 'clsx';
@@ -162,7 +162,6 @@ export function AssessmentsList() {
                                                 <span>Publish</span>
                                             </button>
                                             <button
-                                                disabled={ast.status === 'active' || ast.status === 'closed'}
                                                 onClick={() => handleDelete(ast.id)}
                                                 className="btn btn-ghost btn-icon text-red-500 hover:bg-red-50"
                                                 title="Delete"

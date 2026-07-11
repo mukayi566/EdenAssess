@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { adminAPI } from '@/lib/api';
 import type { AdminStats, CalendarEvent, AuditEvent } from '@/types';
-import { GraduationCap, Users, Calendar, AlertTriangle, ArrowRight, Activity, Clock } from 'lucide-react';
+import { GraduationCap, Users, Calendar, AlertTriangle, ArrowRight, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 

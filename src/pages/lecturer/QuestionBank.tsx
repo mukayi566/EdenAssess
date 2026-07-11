@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { questionsAPI, coursesAPI } from '@/lib/api';
-import type { Question, Course, QuestionType, Difficulty } from '@/types';
+import type { Question, Course } from '@/types';
 import {
-    BookOpen, Plus, Search, Trash2, Edit3, X, HelpCircle, Save, Check, Filter, Trash
+    Plus, Trash2, Edit3, X, HelpCircle, Check, Trash
 } from 'lucide-react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -38,7 +38,7 @@ export function QuestionBank() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
 
-    const { register, control, handleSubmit, watch, reset, setValue, formState: { errors } } = useForm<FormData>({
+    const { register, control, handleSubmit, watch, reset, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),
         defaultValues: {
             type: 'mcq',
@@ -117,10 +117,10 @@ export function QuestionBank() {
             };
 
             if (editingQuestion) {
-                await questionsAPI.update(editingQuestion.id, payload);
+                await questionsAPI.update(editingQuestion.id, payload as any);
                 alert('Question updated in database.');
             } else {
-                await questionsAPI.create(payload);
+                await questionsAPI.create(payload as any);
                 alert('Question saved to database.');
             }
             setShowAddModal(false);

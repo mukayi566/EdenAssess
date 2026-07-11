@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { BarChart3, TrendingUp, Users, Award, Percent } from 'lucide-react';
+import { TrendingUp, Users, Award, Percent } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
 export function AnalyticsPage() {
