@@ -357,7 +357,7 @@ export function LecturerManagement() {
                                         >
                                             <div>
                                                 <p className="text-sm font-semibold text-navy-900">{course.code} - {course.name}</p>
-                                                <p className="text-[11px] text-gray-400">{course.program}</p>
+                                                <p className="text-[11px] text-gray-400">{course.department || course.intake || ''}</p>
                                             </div>
                                             <div className={clsx(
                                                 'w-5 h-5 rounded border flex items-center justify-center transition-colors',
