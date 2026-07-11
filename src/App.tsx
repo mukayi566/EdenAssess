@@ -12,6 +12,7 @@ import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { StudentRoster } from '@/pages/admin/StudentRoster';
 import { LecturerManagement } from '@/pages/admin/LecturerManagement';
+import { CourseManagement } from '@/pages/admin/CourseManagement';
 import { CalendarPage } from '@/pages/admin/CalendarPage';
 import { ProctoringPage } from '@/pages/admin/ProctoringPage';
 import { AuditPage } from '@/pages/admin/AuditPage';
@@ -62,6 +63,7 @@ export default function App() {
               <Route index element={<AdminDashboard />} />
               <Route path="students" element={<StudentRoster />} />
               <Route path="lecturers" element={<LecturerManagement />} />
+              <Route path="courses" element={<CourseManagement />} />
               <Route path="calendar" element={<CalendarPage />} />
               <Route path="flags" element={<ProctoringPage />} />
               <Route path="audit" element={<AuditPage />} />

@@ -1,9 +1,10 @@
 import axios, { AxiosError } from 'axios';
+import { supabase } from '@/lib/supabase';
 import type {
     AuthTokens, AuthUser, Student, StudentCSVRow, Lecturer, Course,
     Question, Assessment, Submission, SubmissionAnswer,
     AuditEvent, ProctoringFlag, CalendarEvent, ProvisionLog,
-    AdminStats, LecturerStats, PaginatedResponse, AssessmentType,
+    AdminStats, LecturerStats, AssessmentType,
 } from '@/types';
 
 // ─── Axios instance ────────────────────────────────────────────────────────────
@@ -47,8 +48,68 @@ export const authAPI = {
 // ─── Admin – Students ──────────────────────────────────────────────────────────
 
 export const studentsAPI = {
-    list: (params?: { page?: number; limit?: number; search?: string }) =>
-        api.get<PaginatedResponse<Student>>('/admin/students', { params }).then(r => r.data),
+    list: async (params?: { page?: number; limit?: number; search?: string }) => {
+        const page = params?.page || 1;
+        const limit = params?.limit || 10;
+        const search = params?.search || '';
+
+        let query = supabase.from('users').select('*', { count: 'exact' });
+
+        // If there's a search term, filter by multiple fields
+        if (search) {
+            query = query.or(`full_name.ilike.%${search}%,student_id.ilike.%${search}%,email.ilike.%${search}%`);
+        }
+
+        const from = (page - 1) * limit;
+        const to = from + limit - 1;
+
+        const { data, error, count } = await query
+            .order('created_at', { ascending: false })
+            .range(from, to);
+
+        if (error) {
+            console.error('Supabase fetch error:', error);
+            throw new Error(error.message);
+        }
+
+        return {
+            items: (data || []).map((d: any) => ({
+                id: d.id,
+                student_id: d.student_id,
+                full_name: d.full_name,
+                program: d.programme || 'Unknown',
+                year: d.year_of_study || 1,
+                email: d.email,
+                phone: d.phone || '',
+                must_reset_password: !!d.is_first_login,
+                created_at: d.created_at,
+                // Dummy status placeholders to satisfy the Typescript types
+                sms_status: 'sent',
+                email_status: 'sent',
+            })) as Student[],
+            total: count || 0,
+            page,
+            limit
+        };
+    },
+
+    create: async (data: Partial<Student>) => {
+        const { data: resData, error } = await supabase.rpc('provision_student', {
+            p_student_id: data.student_id,
+            p_full_name: data.full_name,
+            p_email: data.email,
+            p_program: data.program,
+            p_year: data.year,
+            p_phone: data.phone || ''
+        });
+
+        if (error) {
+            console.error('RPC Error:', error);
+            throw new Error(error.message);
+        }
+
+        return resData;
+    },
 
     bulkUpload: (rows: StudentCSVRow[]) =>
         api.post<{ created: number; errors: string[] }>('/admin/students/bulk', { rows }).then(r => r.data),
@@ -92,8 +153,21 @@ export const adminAPI = {
 // ─── Courses ───────────────────────────────────────────────────────────────────
 
 export const coursesAPI = {
-    list: () => api.get<Course[]>('/courses').then(r => r.data),
-    create: (data: Partial<Course>) => api.post<Course>('/courses', data).then(r => r.data),
+    list: async () => {
+        const { data, error } = await supabase.from('courses').select('*').order('created_at', { ascending: false });
+        if (error) throw new Error(error.message);
+        return data as Course[];
+    },
+    create: async (data: Partial<Course>) => {
+        const { data: created, error } = await supabase.from('courses').insert(data).select().single();
+        if (error) throw new Error(error.message);
+        return created as Course;
+    },
+    delete: async (id: string) => {
+        const { error } = await supabase.from('courses').delete().eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+    },
 };
 
 // ─── Question Bank ─────────────────────────────────────────────────────────────

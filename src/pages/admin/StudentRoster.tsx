@@ -20,7 +20,24 @@ export function StudentRoster() {
     const [csvPreview, setCsvPreview] = useState<StudentCSVRow[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const [showPreviewModal, setShowPreviewModal] = useState(false);
+    const [showAddModal, setShowAddModal] = useState(false);
     const [uploadStats, setUploadStats] = useState({ total: 0, valid: 0, invalid: 0 });
+    const [toastMessage, setToastMessage] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [provisionedCredentials, setProvisionedCredentials] = useState<{ id: string; email: string; password: string } | null>(null);
+
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToastMessage({ message, type });
+        setTimeout(() => setToastMessage(null), 4000);
+    };
+
+    const [newStudent, setNewStudent] = useState({
+        student_id: '',
+        full_name: '',
+        program: '',
+        year: '',
+        email: '',
+        phone: ''
+    });
 
     // Password delivery states
     const [deliveryChannels, setDeliveryChannels] = useState<{ sms: boolean; email: boolean }>({ sms: true, email: true });
@@ -112,12 +129,12 @@ export function StudentRoster() {
             // Send only rows that have no errors
             const validRows = csvPreview.filter(r => r._errors!.length === 0);
             const res = await studentsAPI.bulkUpload(validRows);
-            alert(`Import complete. Successfully created ${res.created} student accounts.`);
+            showToast(`Import complete. Successfully created ${res.created} student accounts.`);
             setShowPreviewModal(false);
             setCsvPreview([]);
             fetchStudents();
         } catch (err: any) {
-            alert(err.response?.data?.detail || 'Import failed');
+            showToast(err.response?.data?.detail || 'Import failed', 'error');
         } finally {
             setIsUploading(false);
         }
@@ -151,11 +168,11 @@ export function StudentRoster() {
         setDelivering(true);
         try {
             await studentsAPI.bulkDeliver(selectedIds, channels);
-            alert('Default passwords dispatched to delivery channels.');
+            showToast('Default passwords dispatched to delivery channels.');
             setSelectedIds([]);
             fetchStudents();
         } catch (err: any) {
-            alert(err.response?.data?.detail || 'Failed to trigger password delivery');
+            showToast(err.response?.data?.detail || 'Failed to trigger password delivery', 'error');
         } finally {
             setDelivering(false);
         }
@@ -164,10 +181,10 @@ export function StudentRoster() {
     const handleRetryDelivery = async (student_id: string, channel: 'sms' | 'email') => {
         try {
             await studentsAPI.retryDelivery(student_id, channel);
-            alert(`Retrying delivery of credentials via ${channel.toUpperCase()}...`);
+            showToast(`Retrying delivery of credentials via ${channel.toUpperCase()}...`);
             fetchStudents();
         } catch (err: any) {
-            alert(err.response?.data?.detail || 'Retry failed');
+            showToast(err.response?.data?.detail || 'Retry failed', 'error');
         }
     };
 
@@ -175,9 +192,34 @@ export function StudentRoster() {
         if (!confirm('Are you sure you want to delete this student account? This action is irreversible.')) return;
         try {
             await studentsAPI.delete(id);
+            showToast('Student deleted successfully.');
             fetchStudents();
         } catch (err: any) {
-            alert(err.response?.data?.detail || 'Failed to delete student');
+            showToast(err.response?.data?.detail || 'Failed to delete student', 'error');
+        }
+    };
+
+    const handleAddSingleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsUploading(true);
+        try {
+            const result = await studentsAPI.create({
+                ...newStudent,
+                year: parseFloat(newStudent.year)
+            });
+            showToast('Student provisioned successfully.');
+            setProvisionedCredentials({
+                id: newStudent.student_id,
+                email: newStudent.email,
+                password: result.temp_password || 'Password stored securely'
+            });
+            setShowAddModal(false);
+            setNewStudent({ student_id: '', full_name: '', program: '', year: '', email: '', phone: '' });
+            fetchStudents();
+        } catch (err: any) {
+            showToast(err.response?.data?.detail || err.message || 'Failed to provision student', 'error');
+        } finally {
+            setIsUploading(false);
         }
     };
 
@@ -192,6 +234,13 @@ export function StudentRoster() {
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
+                    <button
+                        onClick={() => setShowAddModal(true)}
+                        className="btn btn-secondary flex items-center gap-2"
+                    >
+                        <Users size={16} />
+                        <span>Add Student</span>
+                    </button>
                     <label className="btn btn-primary cursor-pointer flex items-center gap-2">
                         <Upload size={16} />
                         <span>Bulk CSV Upload</span>
@@ -560,6 +609,166 @@ export function StudentRoster() {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Add Single Student Modal */}
+            {showAddModal && (
+                <div className="modal-overlay">
+                    <div className="modal-box max-w-lg p-6">
+                        <div className="flex items-center justify-between border-b pb-4 mb-4">
+                            <div>
+                                <h3 className="text-xl font-bold text-navy-900">Provision Student</h3>
+                                <p className="text-xs text-gray-500 mt-1">Manually provision a student account and dispatch credentials.</p>
+                            </div>
+                            <button
+                                onClick={() => setShowAddModal(false)}
+                                className="btn btn-ghost text-gray-500 hover:text-navy-900"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleAddSingleSubmit} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-navy-900">Student ID *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="input w-full"
+                                        value={newStudent.student_id}
+                                        onChange={e => setNewStudent({ ...newStudent, student_id: e.target.value })}
+                                        placeholder="e.g. EDS001"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-navy-900">Full Name *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="input w-full"
+                                        value={newStudent.full_name}
+                                        onChange={e => setNewStudent({ ...newStudent, full_name: e.target.value })}
+                                        placeholder="e.g. John Doe"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-navy-900">Program *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="input w-full"
+                                        value={newStudent.program}
+                                        onChange={e => setNewStudent({ ...newStudent, program: e.target.value })}
+                                        placeholder="e.g. BSc Computer Science"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-navy-900">Year of Study *</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        required
+                                        min="1"
+                                        max="7"
+                                        className="input w-full"
+                                        value={newStudent.year}
+                                        onChange={e => setNewStudent({ ...newStudent, year: e.target.value })}
+                                        placeholder="e.g. 1"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-navy-900">Email Address *</label>
+                                    <input
+                                        type="email"
+                                        required
+                                        className="input w-full"
+                                        value={newStudent.email}
+                                        onChange={e => setNewStudent({ ...newStudent, email: e.target.value })}
+                                        placeholder="student@example.com"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-navy-900">Phone Number</label>
+                                    <input
+                                        type="tel"
+                                        className="input w-full"
+                                        value={newStudent.phone}
+                                        onChange={e => setNewStudent({ ...newStudent, phone: e.target.value })}
+                                        placeholder="+260..."
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-end mt-6 pt-4 border-t gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAddModal(false)}
+                                    className="btn btn-secondary"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isUploading}
+                                    className="btn btn-primary"
+                                >
+                                    {isUploading ? 'Provisioning...' : 'Provision Student Account'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Custom Toast Notification */}
+            {toastMessage && (
+                <div className={clsx(
+                    "fixed bottom-8 right-8 px-5 py-3.5 rounded-lg shadow-xl text-sm font-semibold text-white z-[100] flex items-center gap-2 transition-all transform",
+                    toastMessage.type === 'success' ? 'bg-green-600 border border-green-700' : 'bg-red-600 border border-red-700'
+                )}>
+                    {toastMessage.type === 'success' ? <Check size={16} /> : <AlertOctagon size={16} />}
+                    <span>{toastMessage.message}</span>
+                </div>
+            )}
+
+            {/* Post-Provisioning Credentials Modal */}
+            {provisionedCredentials && (
+                <div className="modal-overlay z-[200]">
+                    <div className="modal-box max-w-sm p-6 text-center animate-in zoom-in-95 duration-200">
+                        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Check size={24} className="text-green-600" />
+                        </div>
+                        <h3 className="text-xl font-bold text-navy-900 mb-2">Account Provisioned!</h3>
+                        <p className="text-xs text-gray-500 mb-6">The student account is ready. Please share these default credentials with the student securely.</p>
+
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6 text-left space-y-4">
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Email Login</p>
+                                <p className="font-mono text-sm text-navy-900 bg-white border px-2 py-1.5 rounded">{provisionedCredentials.email}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Default Temporary Password</p>
+                                <div className="flex items-center justify-between font-mono text-base font-bold text-navy-900 bg-white border border-warning-200 px-3 py-2 rounded">
+                                    {provisionedCredentials.password}
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => setProvisionedCredentials(null)}
+                            className="btn btn-primary w-full"
+                        >
+                            Done
+                        </button>
                     </div>
                 </div>
             )}

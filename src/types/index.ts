@@ -68,9 +68,11 @@ export interface Course {
     id: string;
     code: string;
     name: string;
-    program: string;
-    lecturer_id: string;
-    lecturer_name?: string;
+    department?: string;
+    intake?: string;
+    learning_type?: string;
+    lecturer?: string;
+    created_at?: string;
 }
 
 // ─── Question Bank ────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ const adminNav: NavItem[] = [
     { label: 'Dashboard', to: '/admin', icon: <LayoutDashboard size={18} /> },
     { label: 'Student Roster', to: '/admin/students', icon: <GraduationCap size={18} /> },
     { label: 'Lecturers', to: '/admin/lecturers', icon: <Users size={18} /> },
+    { label: 'Courses', to: '/admin/courses', icon: <BookOpen size={18} /> },
     { label: 'Calendar', to: '/admin/calendar', icon: <Calendar size={18} /> },
     { label: 'Proctoring Flags', to: '/admin/flags', icon: <AlertTriangle size={18} /> },
     { label: 'Audit Log', to: '/admin/audit', icon: <ShieldCheck size={18} /> },
@@ -63,14 +64,6 @@ export function Sidebar({ collapsed = false }: Props) {
                 )}
             </div>
 
-            {/* Role badge */}
-            {!collapsed && (
-                <div className="px-5 pt-4 pb-2">
-                    <span className={clsx('badge text-[10px]', user?.role === 'admin' ? 'badge-warning' : 'badge-info')}>
-                        {user?.role === 'admin' ? 'Administrator' : 'Lecturer'}
-                    </span>
-                </div>
-            )}
 
             {/* Nav */}
             <nav className="flex-1 py-3 flex flex-col gap-0.5 overflow-y-auto">
