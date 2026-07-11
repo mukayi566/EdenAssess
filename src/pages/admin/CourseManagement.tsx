@@ -169,7 +169,7 @@ export function CourseManagement() {
                                         required
                                         type="text"
                                         className="input w-full uppercase"
-                                        placeholder="e.g. CS101"
+                                        placeholder="e.g. ICT3421"
                                         value={newCourse.code}
                                         onChange={e => setNewCourse({ ...newCourse, code: e.target.value.toUpperCase() })}
                                     />
@@ -193,17 +193,17 @@ export function CourseManagement() {
                                     <input
                                         type="text"
                                         className="input w-full"
-                                        placeholder="e.g. Computer Science"
+                                        placeholder="e.g. Computer Organisation"
                                         value={newCourse.department}
                                         onChange={e => setNewCourse({ ...newCourse, department: e.target.value })}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-navy-900 mb-1">Intake (Cohort)</label>
+                                    <label className="block text-xs font-semibold text-navy-900 mb-1">Intake</label>
                                     <input
                                         type="text"
                                         className="input w-full"
-                                        placeholder="e.g. Fall 2026"
+                                        placeholder="e.g 3.1"
                                         value={newCourse.intake}
                                         onChange={e => setNewCourse({ ...newCourse, intake: e.target.value })}
                                     />
@@ -228,7 +228,7 @@ export function CourseManagement() {
                                     <input
                                         type="text"
                                         className="input w-full"
-                                        placeholder="e.g. Dr. Jane Doe"
+                                        placeholder="e.g. Dr Neelam Tiwary"
                                         value={newCourse.lecturer}
                                         onChange={e => setNewCourse({ ...newCourse, lecturer: e.target.value })}
                                     />
