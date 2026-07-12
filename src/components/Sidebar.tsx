@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, Users, GraduationCap, BookOpen, FileText, ClipboardCheck,
-    AlertTriangle, Calendar, LogOut, ChevronRight, ShieldCheck, BarChart3, Layers,
+    AlertTriangle, Calendar, LogOut, ChevronRight, ShieldCheck, BarChart3, Layers, UserCog,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import clsx from 'clsx';
@@ -22,6 +22,7 @@ const adminNav: NavItem[] = [
     { label: 'Calendar', to: '/admin/calendar', icon: <Calendar size={18} /> },
     { label: 'Proctoring Flags', to: '/admin/flags', icon: <AlertTriangle size={18} /> },
     { label: 'Audit Log', to: '/admin/audit', icon: <ShieldCheck size={18} /> },
+    { label: 'User Management', to: '/admin/users', icon: <UserCog size={18} /> },
 ];
 
 const lecturerNav: NavItem[] = [

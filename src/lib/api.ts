@@ -47,6 +47,7 @@ export const authAPI = {
 };
 
 // ─── Admin – Students ──────────────────────────────────────────────────────────
+// Queries the dedicated `students` table (role-separated from admins & lecturers)
 
 export const studentsAPI = {
     list: async (params?: { page?: number; limit?: number; search?: string }) => {
@@ -54,11 +55,17 @@ export const studentsAPI = {
         const limit = params?.limit || 10;
         const search = params?.search || '';
 
-        let query = supabase.from('users').select('*', { count: 'exact' });
+        // ── Try the dedicated `students` table first ──────────────────────────
+        // Fall back to `users` table filtered by role='student' if the
+        // dedicated table doesn't exist yet (pre-migration state).
+        let query = supabase
+            .from('students')
+            .select('*', { count: 'exact' });
 
-        // If there's a search term, filter by multiple fields
         if (search) {
-            query = query.or(`full_name.ilike.%${search}%,student_id.ilike.%${search}%,email.ilike.%${search}%`);
+            query = query.or(
+                `full_name.ilike.%${search}%,student_id.ilike.%${search}%,email.ilike.%${search}%`
+            );
         }
 
         const from = (page - 1) * limit;
@@ -68,6 +75,51 @@ export const studentsAPI = {
             .order('created_at', { ascending: false })
             .range(from, to);
 
+        // If the dedicated table doesn't exist, fall back to the users table
+        // filtered by role='student'
+        if (error && (error.code === '42P01' || error.message.includes('does not exist'))) {
+            console.warn('`students` table not found – falling back to users table with role filter');
+
+            let fallbackQuery = supabase
+                .from('users')
+                .select('*', { count: 'exact' })
+                .eq('role', 'student');
+
+            if (search) {
+                fallbackQuery = fallbackQuery.or(
+                    `full_name.ilike.%${search}%,student_id.ilike.%${search}%,email.ilike.%${search}%`
+                );
+            }
+
+            const { data: fbData, error: fbError, count: fbCount } = await fallbackQuery
+                .order('created_at', { ascending: false })
+                .range(from, to);
+
+            if (fbError) {
+                console.error('Fallback fetch error:', fbError);
+                throw new Error(fbError.message);
+            }
+
+            return {
+                items: (fbData || []).map((d: any) => ({
+                    id: d.id,
+                    student_id: d.student_id || '',
+                    full_name: d.full_name,
+                    program: d.programme || d.program || 'Unknown',
+                    year: d.year_of_study || 1,
+                    email: d.email,
+                    phone: d.phone || '',
+                    must_reset_password: !!d.is_first_login,
+                    created_at: d.created_at,
+                    sms_status: (d.sms_status || 'pending') as Student['sms_status'],
+                    email_status: (d.email_status || 'pending') as Student['email_status'],
+                })) as Student[],
+                total: fbCount || 0,
+                page,
+                limit,
+            };
+        }
+
         if (error) {
             console.error('Supabase fetch error:', error);
             throw new Error(error.message);
@@ -76,40 +128,75 @@ export const studentsAPI = {
         return {
             items: (data || []).map((d: any) => ({
                 id: d.id,
-                student_id: d.student_id,
+                student_id: d.student_id || '',
                 full_name: d.full_name,
-                program: d.programme || 'Unknown',
+                program: d.programme || d.program || 'Unknown',
                 year: d.year_of_study || 1,
                 email: d.email,
                 phone: d.phone || '',
                 must_reset_password: !!d.is_first_login,
                 created_at: d.created_at,
-                // Dummy status placeholders to satisfy the Typescript types
-                sms_status: 'sent',
-                email_status: 'sent',
+                sms_status: (d.sms_status || 'pending') as Student['sms_status'],
+                email_status: (d.email_status || 'pending') as Student['email_status'],
             })) as Student[],
             total: count || 0,
             page,
-            limit
+            limit,
         };
     },
 
-    create: async (data: Partial<Student>) => {
-        const { data: resData, error } = await supabase.rpc('provision_student', {
-            p_student_id: data.student_id,
-            p_full_name: data.full_name,
-            p_email: data.email,
-            p_program: data.program,
-            p_year: data.year,
-            p_phone: data.phone || ''
-        });
+    create: async (data: Partial<Student> & { school_id?: string; degree_id?: string }) => {
+        // Insert directly into the dedicated students table
+        const { data: inserted, error } = await supabase
+            .from('students')
+            .insert({
+                student_id: data.student_id,
+                full_name: data.full_name,
+                email: data.email,
+                phone: data.phone || null,
+                programme: data.program,
+                year_of_study: data.year,
+                school_id: data.school_id || null,
+                degree_id: data.degree_id || null,
+                sms_status: 'pending',
+                email_status: 'pending',
+                is_first_login: true,
+            })
+            .select()
+            .single();
 
         if (error) {
-            console.error('RPC Error:', error);
+            // Fall back to RPC if dedicated table doesn't exist yet
+            if (error.code === '42P01' || error.message.includes('does not exist')) {
+                const { data: resData, error: rpcError } = await supabase.rpc('provision_student', {
+                    p_student_id: data.student_id,
+                    p_full_name: data.full_name,
+                    p_email: data.email,
+                    p_program: data.program,
+                    p_year: data.year,
+                    p_phone: data.phone || ''
+                });
+                if (rpcError) throw new Error(rpcError.message);
+                return resData;
+            }
+            console.error('Insert error:', error);
             throw new Error(error.message);
         }
 
-        return resData;
+        return { ...inserted, temp_password: null };
+    },
+
+    delete: async (id: string) => {
+        // Try dedicated table first
+        const { error } = await supabase.from('students').delete().eq('id', id);
+        if (error && (error.code === '42P01' || error.message.includes('does not exist'))) {
+            // Fall back to users table
+            const { error: ue } = await supabase.from('users').delete().eq('id', id);
+            if (ue) throw new Error(ue.message);
+            return true;
+        }
+        if (error) throw new Error(error.message);
+        return true;
     },
 
     bulkUpload: (rows: StudentCSVRow[]) =>
@@ -120,17 +207,72 @@ export const studentsAPI = {
 
     retryDelivery: (student_id: string, channel: 'sms' | 'email') =>
         api.post(`/admin/students/${student_id}/retry-delivery`, { channel }).then(r => r.data),
-
-    delete: (id: string) => api.delete(`/admin/students/${id}`).then(r => r.data),
 };
 
 // ─── Admin – Lecturers ─────────────────────────────────────────────────────────
+// Queries the dedicated `lecturers` table (role-separated)
 
 export const lecturersAPI = {
-    list: () => api.get<Lecturer[]>('/admin/lecturers').then(r => r.data),
+    list: async (): Promise<Lecturer[]> => {
+        // Try dedicated lecturers table first
+        const { data, error } = await supabase
+            .from('lecturers')
+            .select('*')
+            .order('created_at', { ascending: false });
 
-    create: (data: Partial<Lecturer>) =>
-        api.post<Lecturer>('/admin/lecturers', data).then(r => r.data),
+        if (error && (error.code === '42P01' || error.message.includes('does not exist'))) {
+            // Fall back to users table filtered by role
+            console.warn('`lecturers` table not found – falling back to users table with role filter');
+            const { data: fbData, error: fbError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('role', 'lecturer')
+                .order('created_at', { ascending: false });
+            if (fbError) throw new Error(fbError.message);
+            return (fbData || []).map((d: any) => ({
+                id: d.id,
+                staff_id: d.student_id || d.staff_id || '',
+                full_name: d.full_name,
+                email: d.email,
+                phone: d.phone || '',
+                courses: [],
+                must_reset_password: !!d.is_first_login,
+                created_at: d.created_at,
+            })) as Lecturer[];
+        }
+
+        if (error) throw new Error(error.message);
+
+        return (data || []).map((d: any) => ({
+            id: d.id,
+            staff_id: d.staff_id || '',
+            full_name: d.full_name,
+            email: d.email,
+            phone: d.phone || '',
+            courses: [],
+            must_reset_password: !!d.is_first_login,
+            created_at: d.created_at,
+        })) as Lecturer[];
+    },
+
+    create: async (data: Partial<Lecturer>) => {
+        const { data: inserted, error } = await supabase
+            .from('lecturers')
+            .insert({
+                staff_id: data.staff_id,
+                full_name: data.full_name,
+                email: data.email,
+                phone: data.phone || null,
+                sms_status: 'pending',
+                email_status: 'pending',
+                is_first_login: true,
+            })
+            .select()
+            .single();
+
+        if (error) throw new Error(error.message);
+        return inserted as Lecturer;
+    },
 
     update: (id: string, data: Partial<Lecturer>) =>
         api.put<Lecturer>(`/admin/lecturers/${id}`, data).then(r => r.data),
@@ -138,29 +280,91 @@ export const lecturersAPI = {
     assignCourses: (id: string, course_ids: string[]) =>
         api.post(`/admin/lecturers/${id}/courses`, { course_ids }).then(r => r.data),
 
-    delete: (id: string) => api.delete(`/admin/lecturers/${id}`).then(r => r.data),
+    delete: async (id: string) => {
+        const { error } = await supabase.from('lecturers').delete().eq('id', id);
+        if (error && (error.code === '42P01' || error.message.includes('does not exist'))) {
+            const { error: ue } = await supabase.from('users').delete().eq('id', id);
+            if (ue) throw new Error(ue.message);
+            return true;
+        }
+        if (error) throw new Error(error.message);
+        return true;
+    },
+};
+
+// ─── Admin – Admins ────────────────────────────────────────────────────────────
+// Queries the dedicated `admins` table (role-separated)
+
+export const adminsAPI = {
+    list: async () => {
+        // Try dedicated admins table first
+        const { data, error } = await supabase
+            .from('admins')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error && (error.code === '42P01' || error.message.includes('does not exist'))) {
+            // Fall back to users table filtered by role
+            console.warn('`admins` table not found – falling back to users table with role filter');
+            const { data: fbData, error: fbError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('role', 'admin')
+                .order('created_at', { ascending: false });
+            if (fbError) throw new Error(fbError.message);
+            return fbData || [];
+        }
+
+        if (error) throw new Error(error.message);
+        return data || [];
+    },
+
+    create: async (data: { staff_id: string; full_name: string; email: string; phone?: string; department?: string }) => {
+        const { data: inserted, error } = await supabase
+            .from('admins')
+            .insert(data)
+            .select()
+            .single();
+        if (error) throw new Error(error.message);
+        return inserted;
+    },
+
+    delete: async (id: string) => {
+        const { error } = await supabase.from('admins').delete().eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+    },
 };
 
 // ─── Admin – Audit & Proctoring ────────────────────────────────────────────────
 
 export const adminAPI = {
     stats: async (): Promise<AdminStats> => {
-        const [
-            { count: studentsCount },
-            { count: lecturersCount },
-            { count: coursesCount },
-            { count: activeAssessments },
-        ] = await Promise.all([
-            supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'student'),
-            supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'lecturer'),
+        // Count from dedicated role tables; fall back to users table if not yet migrated
+        const [studentsRes, lecturersRes, coursesRes, activeAssessmentsRes] = await Promise.all([
+            supabase.from('students').select('*', { count: 'exact', head: true }),
+            supabase.from('lecturers').select('*', { count: 'exact', head: true }),
             supabase.from('courses').select('*', { count: 'exact', head: true }),
             supabase.from('assessments').select('*', { count: 'exact', head: true }).eq('status', 'active'),
         ]);
+
+        // Fall back to users table for counts if dedicated tables don't exist
+        let studentsCount = studentsRes.count;
+        let lecturersCount = lecturersRes.count;
+        if (studentsRes.error && (studentsRes.error.code === '42P01' || studentsRes.error.message.includes('does not exist'))) {
+            const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'student');
+            studentsCount = count;
+        }
+        if (lecturersRes.error && (lecturersRes.error.code === '42P01' || lecturersRes.error.message.includes('does not exist'))) {
+            const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'lecturer');
+            lecturersCount = count;
+        }
+
         return {
             total_students: studentsCount || 0,
             total_lecturers: lecturersCount || 0,
-            total_courses: coursesCount || 0,
-            active_assessments: activeAssessments || 0,
+            total_courses: coursesRes.count || 0,
+            active_assessments: activeAssessmentsRes.count || 0,
             flagged_sessions_today: 0,
         };
     },

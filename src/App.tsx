@@ -17,6 +17,7 @@ import { SchoolsAndDegrees } from '@/pages/admin/SchoolsAndDegrees';
 import { CalendarPage } from '@/pages/admin/CalendarPage';
 import { ProctoringPage } from '@/pages/admin/ProctoringPage';
 import { AuditPage } from '@/pages/admin/AuditPage';
+import { UserManagement } from '@/pages/admin/UserManagement';
 
 // Lecturer pages
 import { LecturerDashboard } from '@/pages/lecturer/LecturerDashboard';
@@ -69,6 +70,7 @@ export default function App() {
               <Route path="calendar" element={<CalendarPage />} />
               <Route path="flags" element={<ProctoringPage />} />
               <Route path="audit" element={<AuditPage />} />
+              <Route path="users" element={<UserManagement />} />
             </Route>
 
             {/* Lecturer layout */}

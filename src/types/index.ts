@@ -66,6 +66,18 @@ export interface Lecturer {
     created_at: string;
 }
 
+// ─── Admin ───────────────────────────────────────────────────────────────────
+
+export interface Admin {
+    id: string;
+    staff_id: string;
+    full_name: string;
+    email: string;
+    phone?: string;
+    department?: string;
+    created_at?: string;
+}
+
 // ─── School ──────────────────────────────────────────────────────────────────
 
 export interface School {
