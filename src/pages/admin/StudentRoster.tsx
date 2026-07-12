@@ -751,17 +751,17 @@ export function StudentRoster() {
 
                             {/* Year */}
                             <div className="space-y-1">
-                                <label className="text-xs font-semibold text-navy-900">Year of Study *</label>
+                                <label className="text-xs font-semibold text-navy-900">Year of Study</label>
                                 <input
                                     type="number"
                                     step="any"
                                     required
-                                    min="1"
-                                    max="7"
+                                    min="1.1"
+                                    max="6.2"
                                     className="input w-full"
                                     value={newStudent.year}
                                     onChange={e => setNewStudent({ ...newStudent, year: e.target.value })}
-                                    placeholder="e.g. 1"
+                                    placeholder="e.g 2.1"
                                 />
                             </div>
 

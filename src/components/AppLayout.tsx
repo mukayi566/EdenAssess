@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
-import { Menu, X, Bell, Search } from 'lucide-react';
+import { NotificationPanel } from './NotificationPanel';
+import { Menu, X, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function AppLayout() {
@@ -39,10 +40,7 @@ export function AppLayout() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <button className="btn btn-ghost btn-icon relative" aria-label="Notifications">
-                            <Bell size={18} className="text-[#0A2540]" />
-                            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500 border-2 border-white" />
-                        </button>
+                        <NotificationPanel />
                         <div className="flex items-center gap-2 pl-2 border-l border-[#dbeeff]">
                             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0A2540] to-[#2172be] flex items-center justify-center">
                                 <span className="text-white text-xs font-bold">

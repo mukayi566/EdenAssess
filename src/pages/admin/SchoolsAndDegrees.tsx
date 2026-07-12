@@ -333,7 +333,7 @@ export function SchoolsAndDegrees() {
                         <form onSubmit={handleCreateSchool} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-navy-900">School Code *</label>
+                                    <label className="text-xs font-semibold text-navy-900">School Code</label>
                                     <input
                                         required
                                         type="text"
@@ -344,7 +344,7 @@ export function SchoolsAndDegrees() {
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-navy-900">Full Name *</label>
+                                    <label className="text-xs font-semibold text-navy-900">Full Name</label>
                                     <input
                                         required
                                         type="text"
