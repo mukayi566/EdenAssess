@@ -13,6 +13,7 @@ import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { StudentRoster } from '@/pages/admin/StudentRoster';
 import { LecturerManagement } from '@/pages/admin/LecturerManagement';
 import { CourseManagement } from '@/pages/admin/CourseManagement';
+import { SchoolsAndDegrees } from '@/pages/admin/SchoolsAndDegrees';
 import { CalendarPage } from '@/pages/admin/CalendarPage';
 import { ProctoringPage } from '@/pages/admin/ProctoringPage';
 import { AuditPage } from '@/pages/admin/AuditPage';
@@ -64,6 +65,7 @@ export default function App() {
               <Route path="students" element={<StudentRoster />} />
               <Route path="lecturers" element={<LecturerManagement />} />
               <Route path="courses" element={<CourseManagement />} />
+              <Route path="schools" element={<SchoolsAndDegrees />} />
               <Route path="calendar" element={<CalendarPage />} />
               <Route path="flags" element={<ProctoringPage />} />
               <Route path="audit" element={<AuditPage />} />

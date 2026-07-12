@@ -32,6 +32,10 @@ export interface Student {
     year: number;
     email: string;
     phone?: string;
+    school_id?: string;
+    school_name?: string;
+    degree_id?: string;
+    degree_name?: string;
     must_reset_password: boolean;
     created_at: string;
     sms_status: DeliveryStatus;
@@ -60,6 +64,29 @@ export interface Lecturer {
     courses: string[];
     must_reset_password: boolean;
     created_at: string;
+}
+
+// ─── School ──────────────────────────────────────────────────────────────────
+
+export interface School {
+    id: string;
+    code: string;
+    name: string;
+    description?: string;
+    created_at?: string;
+}
+
+// ─── Degree Programme ────────────────────────────────────────────────────────
+
+export type DegreeLevel = 'Undergraduate' | 'Postgraduate' | 'Diploma' | 'Certificate';
+
+export interface Degree {
+    id: string;
+    code: string;
+    name: string;
+    school_id: string;
+    level: DegreeLevel;
+    created_at?: string;
 }
 
 // ─── Course ───────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, Users, GraduationCap, BookOpen, FileText, ClipboardCheck,
-    AlertTriangle, Calendar, LogOut, ChevronRight, ShieldCheck, BarChart3,
+    AlertTriangle, Calendar, LogOut, ChevronRight, ShieldCheck, BarChart3, Layers,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import clsx from 'clsx';
@@ -18,6 +18,7 @@ const adminNav: NavItem[] = [
     { label: 'Student Roster', to: '/admin/students', icon: <GraduationCap size={18} /> },
     { label: 'Lecturers', to: '/admin/lecturers', icon: <Users size={18} /> },
     { label: 'Courses', to: '/admin/courses', icon: <BookOpen size={18} /> },
+    { label: 'Schools & Degrees', to: '/admin/schools', icon: <Layers size={18} /> },
     { label: 'Calendar', to: '/admin/calendar', icon: <Calendar size={18} /> },
     { label: 'Proctoring Flags', to: '/admin/flags', icon: <AlertTriangle size={18} /> },
     { label: 'Audit Log', to: '/admin/audit', icon: <ShieldCheck size={18} /> },
@@ -49,9 +50,6 @@ export function Sidebar({ collapsed = false }: Props) {
         >
             {/* Logo */}
             <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#d4a015] to-[#e8b820] flex items-center justify-center flex-shrink-0">
-                    <span className="text-[#0A2540] font-bold text-sm">E</span>
-                </div>
                 {!collapsed && (
                     <div>
                         <p className="text-white font-semibold text-sm leading-none" style={{ fontFamily: 'var(--font-family-heading)' }}>

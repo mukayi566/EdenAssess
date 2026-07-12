@@ -2,6 +2,7 @@ import axios, { AxiosError } from 'axios';
 import { supabase } from '@/lib/supabase';
 import type {
     AuthTokens, AuthUser, Student, StudentCSVRow, Lecturer, Course,
+    School, Degree,
     Question, Assessment, Submission, SubmissionAnswer,
     AuditEvent, ProctoringFlag, CalendarEvent, ProvisionLog,
     AdminStats, LecturerStats, AssessmentType,
@@ -143,11 +144,72 @@ export const lecturersAPI = {
 // ─── Admin – Audit & Proctoring ────────────────────────────────────────────────
 
 export const adminAPI = {
-    stats: () => api.get<AdminStats>('/admin/stats').then(r => r.data),
-    auditLog: () => api.get<AuditEvent[]>('/admin/audit-log').then(r => r.data),
-    proctoringFlags: () => api.get<ProctoringFlag[]>('/admin/proctoring-flags').then(r => r.data),
-    calendar: () => api.get<CalendarEvent[]>('/admin/calendar').then(r => r.data),
-    provisionLog: () => api.get<ProvisionLog[]>('/admin/provision-log').then(r => r.data),
+    stats: async (): Promise<AdminStats> => {
+        const [
+            { count: studentsCount },
+            { count: lecturersCount },
+            { count: coursesCount },
+            { count: activeAssessments },
+        ] = await Promise.all([
+            supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'student'),
+            supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'lecturer'),
+            supabase.from('courses').select('*', { count: 'exact', head: true }),
+            supabase.from('assessments').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+        ]);
+        return {
+            total_students: studentsCount || 0,
+            total_lecturers: lecturersCount || 0,
+            total_courses: coursesCount || 0,
+            active_assessments: activeAssessments || 0,
+            flagged_sessions_today: 0,
+        };
+    },
+
+    auditLog: async (): Promise<AuditEvent[]> => {
+        const { data, error } = await supabase
+            .from('audit_log')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(100);
+        if (error) throw new Error(error.message);
+        return (data || []) as AuditEvent[];
+    },
+
+    proctoringFlags: async (): Promise<ProctoringFlag[]> => {
+        const { data, error } = await supabase
+            .from('proctoring_flags')
+            .select('*')
+            .order('flagged_at', { ascending: false });
+        if (error) throw new Error(error.message);
+        return (data || []) as ProctoringFlag[];
+    },
+
+    calendar: async (): Promise<CalendarEvent[]> => {
+        const { data, error } = await supabase
+            .from('assessments')
+            .select('id, title, course_name, type, start_time, end_time, status')
+            .order('start_time', { ascending: true });
+        if (error) throw new Error(error.message);
+        return (data || []).map((a: any) => ({
+            id: a.id,
+            title: a.title,
+            course: a.course_name || '',
+            type: a.type,
+            start: a.start_time,
+            end: a.end_time,
+            status: a.status,
+        })) as CalendarEvent[];
+    },
+
+    provisionLog: async (): Promise<ProvisionLog[]> => {
+        const { data, error } = await supabase
+            .from('provision_logs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(200);
+        if (error) throw new Error(error.message);
+        return (data || []) as ProvisionLog[];
+    },
 };
 
 // ─── Courses ───────────────────────────────────────────────────────────────────
@@ -165,6 +227,51 @@ export const coursesAPI = {
     },
     delete: async (id: string) => {
         const { error } = await supabase.from('courses').delete().eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+    },
+};
+
+// ─── Schools ───────────────────────────────────────────────────────────────────
+
+export const schoolsAPI = {
+    list: async (): Promise<School[]> => {
+        const { data, error } = await supabase.from('schools').select('*').order('name', { ascending: true });
+        if (error) throw new Error(error.message);
+        return (data || []) as School[];
+    },
+    create: async (data: { name: string; code: string; description?: string }): Promise<School> => {
+        const { data: created, error } = await supabase.from('schools').insert(data).select().single();
+        if (error) throw new Error(error.message);
+        return created as School;
+    },
+    delete: async (id: string) => {
+        const { error } = await supabase.from('schools').delete().eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+    },
+};
+
+// ─── Degrees ───────────────────────────────────────────────────────────────────
+
+export const degreesAPI = {
+    list: async (): Promise<Degree[]> => {
+        const { data, error } = await supabase.from('degrees').select('*').order('name', { ascending: true });
+        if (error) throw new Error(error.message);
+        return (data || []) as Degree[];
+    },
+    listBySchool: async (school_id: string): Promise<Degree[]> => {
+        const { data, error } = await supabase.from('degrees').select('*').eq('school_id', school_id).order('name', { ascending: true });
+        if (error) throw new Error(error.message);
+        return (data || []) as Degree[];
+    },
+    create: async (data: { name: string; code: string; school_id: string; level: string }): Promise<Degree> => {
+        const { data: created, error } = await supabase.from('degrees').insert(data).select().single();
+        if (error) throw new Error(error.message);
+        return created as Degree;
+    },
+    delete: async (id: string) => {
+        const { error } = await supabase.from('degrees').delete().eq('id', id);
         if (error) throw new Error(error.message);
         return true;
     },

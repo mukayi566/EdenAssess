@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import Papa from 'papaparse';
-import { studentsAPI } from '@/lib/api';
-import type { Student, StudentCSVRow } from '@/types';
+import { studentsAPI, schoolsAPI, degreesAPI } from '@/lib/api';
+import type { Student, StudentCSVRow, School, Degree } from '@/types';
 import {
     Upload, Check, AlertOctagon, RefreshCw, Send,
-    Trash2, Mail, Phone, Search, Users, ChevronLeft, ChevronRight
+    Trash2, Mail, Phone, Search, Users, ChevronLeft, ChevronRight, Building2, GraduationCap
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -30,9 +30,16 @@ export function StudentRoster() {
         setTimeout(() => setToastMessage(null), 4000);
     };
 
+    // Schools & Degrees for dropdowns
+    const [schools, setSchools] = useState<School[]>([]);
+    const [allDegrees, setAllDegrees] = useState<Degree[]>([]);
+    const [filteredDegrees, setFilteredDegrees] = useState<Degree[]>([]);
+
     const [newStudent, setNewStudent] = useState({
         student_id: '',
         full_name: '',
+        school_id: '',
+        degree_id: '',
         program: '',
         year: '',
         email: '',
@@ -58,6 +65,25 @@ export function StudentRoster() {
     useEffect(() => {
         fetchStudents();
     }, [page, search]);
+
+    // Load schools & degrees once on mount
+    useEffect(() => {
+        schoolsAPI.list().then(setSchools).catch(console.error);
+        degreesAPI.list().then(data => {
+            setAllDegrees(data);
+        }).catch(console.error);
+    }, []);
+
+    // Filter degrees whenever selected school changes
+    const handleSchoolChange = (school_id: string) => {
+        setNewStudent(s => ({ ...s, school_id, degree_id: '', program: '' }));
+        setFilteredDegrees(allDegrees.filter(d => d.school_id === school_id));
+    };
+
+    const handleDegreeChange = (degree_id: string) => {
+        const deg = allDegrees.find(d => d.id === degree_id);
+        setNewStudent(s => ({ ...s, degree_id, program: deg?.name || '' }));
+    };
 
     const handleCsvSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -201,11 +227,21 @@ export function StudentRoster() {
 
     const handleAddSingleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!newStudent.school_id || !newStudent.degree_id) {
+            showToast('Please select both a school and a degree programme.', 'error');
+            return;
+        }
         setIsUploading(true);
         try {
             const result = await studentsAPI.create({
-                ...newStudent,
-                year: parseFloat(newStudent.year)
+                student_id: newStudent.student_id,
+                full_name: newStudent.full_name,
+                program: newStudent.program,
+                year: parseFloat(newStudent.year),
+                email: newStudent.email,
+                phone: newStudent.phone,
+                school_id: newStudent.school_id,
+                degree_id: newStudent.degree_id,
             });
             showToast('Student provisioned successfully.');
             setProvisionedCredentials({
@@ -214,7 +250,8 @@ export function StudentRoster() {
                 password: result.temp_password || 'Password stored securely'
             });
             setShowAddModal(false);
-            setNewStudent({ student_id: '', full_name: '', program: '', year: '', email: '', phone: '' });
+            setNewStudent({ student_id: '', full_name: '', school_id: '', degree_id: '', program: '', year: '', email: '', phone: '' });
+            setFilteredDegrees([]);
             fetchStudents();
         } catch (err: any) {
             showToast(err.response?.data?.detail || err.message || 'Failed to provision student', 'error');
@@ -633,55 +670,99 @@ export function StudentRoster() {
                         <form onSubmit={handleAddSingleSubmit} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-navy-900">Student ID *</label>
+                                    <label className="text-xs font-semibold text-navy-900">Student ID </label>
                                     <input
                                         type="text"
                                         required
                                         className="input w-full"
                                         value={newStudent.student_id}
                                         onChange={e => setNewStudent({ ...newStudent, student_id: e.target.value })}
-                                        placeholder="e.g. EDS001"
+                                        placeholder="e.g. 2023090349"
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-navy-900">Full Name *</label>
+                                    <label className="text-xs font-semibold text-navy-900">Full Name</label>
                                     <input
                                         type="text"
                                         required
                                         className="input w-full"
                                         value={newStudent.full_name}
                                         onChange={e => setNewStudent({ ...newStudent, full_name: e.target.value })}
-                                        placeholder="e.g. John Doe"
+                                        placeholder="e.g. Mukayi Zhou"
                                     />
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-navy-900">Program *</label>
-                                    <input
-                                        type="text"
+                            {/* School dropdown */}
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-navy-900 flex items-center gap-1">
+                                    <Building2 size={12} className="text-navy-400" />
+                                    School / Faculty *
+                                </label>
+                                {schools.length === 0 ? (
+                                    <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-700">
+                                        ⚠ No schools configured. Go to <strong className="mx-1">Schools &amp; Degrees</strong> to add them first.
+                                    </div>
+                                ) : (
+                                    <select
                                         required
                                         className="input w-full"
-                                        value={newStudent.program}
-                                        onChange={e => setNewStudent({ ...newStudent, program: e.target.value })}
-                                        placeholder="e.g. BSc Computer Science"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-navy-900">Year of Study *</label>
-                                    <input
-                                        type="number"
-                                        step="any"
-                                        required
-                                        min="1"
-                                        max="7"
-                                        className="input w-full"
-                                        value={newStudent.year}
-                                        onChange={e => setNewStudent({ ...newStudent, year: e.target.value })}
-                                        placeholder="e.g. 1"
-                                    />
-                                </div>
+                                        value={newStudent.school_id}
+                                        onChange={e => handleSchoolChange(e.target.value)}
+                                    >
+                                        <option value="">— Select School —</option>
+                                        {schools.map(s => (
+                                            <option key={s.id} value={s.id}>{s.name}</option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
+
+                            {/* Degree dropdown */}
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-navy-900 flex items-center gap-1">
+                                    <GraduationCap size={12} className="text-navy-400" />
+                                    Degree Programme *
+                                </label>
+                                <select
+                                    required
+                                    className="input w-full"
+                                    value={newStudent.degree_id}
+                                    onChange={e => handleDegreeChange(e.target.value)}
+                                    disabled={!newStudent.school_id || filteredDegrees.length === 0}
+                                >
+                                    <option value="">
+                                        {!newStudent.school_id
+                                            ? '— Select a school first —'
+                                            : filteredDegrees.length === 0
+                                                ? '— No degrees for this school —'
+                                                : '— Select Degree —'}
+                                    </option>
+                                    {filteredDegrees.map(d => (
+                                        <option key={d.id} value={d.id}>{d.name}</option>
+                                    ))}
+                                </select>
+                                {newStudent.program && (
+                                    <p className="text-[10px] text-navy-500 mt-0.5 font-mono">
+                                        Programme: {newStudent.program}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Year */}
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-navy-900">Year of Study *</label>
+                                <input
+                                    type="number"
+                                    step="any"
+                                    required
+                                    min="1"
+                                    max="7"
+                                    className="input w-full"
+                                    value={newStudent.year}
+                                    onChange={e => setNewStudent({ ...newStudent, year: e.target.value })}
+                                    placeholder="e.g. 1"
+                                />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
