@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseUrl, supabaseServiceRoleKey } from '@/lib/supabase';
 import type {
     AuthTokens, AuthUser, Student, StudentCSVRow, Lecturer, Course,
     School, Degree,
@@ -145,8 +145,106 @@ export const studentsAPI = {
         };
     },
 
-    create: async (data: Partial<Student> & { school_id?: string; degree_id?: string }) => {
-        // Insert directly into the dedicated students table
+    create: async (data: Partial<Student> & { school_id?: string; degree_id?: string; temp_password?: string }) => {
+        const tempPassword = data.temp_password || '';
+        // Login email used by the mobile app: studentId@edenuniversity.ac.zm
+        const authEmail = `${data.student_id}@edenuniversity.ac.zm`;
+
+        // ── Step 1: Create Supabase Auth user via direct REST API ─────────────
+        // We use fetch() directly instead of supabaseAdmin.auth.admin.createUser()
+        // because the JS client wrapper throws AuthRetryableFetchError on some
+        // project configs. Direct fetch to the Admin REST API is always reliable.
+        let authUserId: string | null = null;
+
+        if (!supabaseServiceRoleKey) {
+            console.warn('[provision] VITE_SUPABASE_SERVICE_ROLE_KEY not set — skipping auth user creation.');
+        } else {
+            const adminApiUrl = `${supabaseUrl}/auth/v1/admin/users`;
+            console.log('[provision] POST', adminApiUrl, 'for', authEmail);
+
+            const createRes = await fetch(adminApiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseServiceRoleKey}`,
+                    'apikey': supabaseServiceRoleKey,
+                },
+                body: JSON.stringify({
+                    email: authEmail,
+                    password: tempPassword,
+                    email_confirm: true,
+                    user_metadata: {
+                        full_name: data.full_name,
+                        student_id: data.student_id,
+                        role: 'student',
+                    },
+                }),
+            });
+
+            const createJson = await createRes.json();
+            console.log('[provision] createUser response:', createRes.status, JSON.stringify(createJson));
+
+            if (createRes.ok) {
+                // Success — grab the new user's UUID
+                authUserId = createJson.id || null;
+            } else {
+                const errMsg: string =
+                    createJson?.error_description ||
+                    createJson?.message ||
+                    createJson?.msg ||
+                    createJson?.error ||
+                    JSON.stringify(createJson);
+
+                console.error('[provision] Auth user creation failed. Status:', createRes.status, '| Body:', JSON.stringify(createJson));
+
+                // ONLY treat as duplicate if the error message explicitly says so.
+                // 422 is ALSO returned for password policy violations — do not rely on status code alone.
+                const isAlreadyExists =
+                    errMsg.toLowerCase().includes('already registered') ||
+                    errMsg.toLowerCase().includes('already been registered') ||
+                    errMsg.toLowerCase().includes('user already exists') ||
+                    errMsg.toLowerCase().includes('email already');
+
+                if (isAlreadyExists) {
+                    // User already exists — fetch them and reset their password
+                    console.log('[provision] User already exists, fetching to update password...');
+                    const listRes = await fetch(
+                        `${supabaseUrl}/auth/v1/admin/users?email=${encodeURIComponent(authEmail)}`,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${supabaseServiceRoleKey}`,
+                                'apikey': supabaseServiceRoleKey,
+                            },
+                        }
+                    );
+                    const listJson = await listRes.json();
+                    console.log('[provision] listUsers response:', JSON.stringify(listJson));
+                    const found = (listJson?.users || []).find(
+                        (u: { email?: string }) => u.email === authEmail
+                    );
+                    if (found?.id) {
+                        authUserId = found.id;
+                        await fetch(`${supabaseUrl}/auth/v1/admin/users/${authUserId}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${supabaseServiceRoleKey}`,
+                                'apikey': supabaseServiceRoleKey,
+                            },
+                            body: JSON.stringify({ password: tempPassword, email_confirm: true }),
+                        });
+                        console.log('[provision] Reset password for existing user:', authUserId);
+                    } else {
+                        // Can't find the user — proceed without authUserId (roster row still gets inserted)
+                        console.warn('[provision] Duplicate error but user not found in list — proceeding without auth link.');
+                    }
+                } else {
+                    throw new Error(`Failed to create auth account for ${authEmail}: ${errMsg}`);
+                }
+            }
+        }
+
+        // ── Step 2: Insert into the dedicated students table (admin roster) ────
         const { data: inserted, error } = await supabase
             .from('students')
             .insert({
@@ -158,6 +256,7 @@ export const studentsAPI = {
                 year_of_study: data.year,
                 school_id: data.school_id || null,
                 degree_id: data.degree_id || null,
+                temp_password: tempPassword || null,
                 sms_status: 'pending',
                 email_status: 'pending',
                 is_first_login: true,
@@ -183,7 +282,7 @@ export const studentsAPI = {
             throw new Error(error.message);
         }
 
-        return { ...inserted, temp_password: null };
+        return { ...inserted, temp_password: inserted.temp_password || null };
     },
 
     delete: async (id: string) => {
@@ -214,10 +313,16 @@ export const studentsAPI = {
 
 export const lecturersAPI = {
     list: async (): Promise<Lecturer[]> => {
-        // Try dedicated lecturers table first
+        // Fetch lecturers with their assigned course codes via a join
         const { data, error } = await supabase
             .from('lecturers')
-            .select('*')
+            .select(`
+                *,
+                lecturer_courses (
+                    course_id,
+                    courses ( code )
+                )
+            `)
             .order('created_at', { ascending: false });
 
         if (error && (error.code === '42P01' || error.message.includes('does not exist'))) {
@@ -249,7 +354,8 @@ export const lecturersAPI = {
             full_name: d.full_name,
             email: d.email,
             phone: d.phone || '',
-            courses: [],
+            // Flatten joined course codes into a string array
+            courses: (d.lecturer_courses || []).map((lc: any) => lc.courses?.code).filter(Boolean),
             must_reset_password: !!d.is_first_login,
             created_at: d.created_at,
         })) as Lecturer[];
@@ -274,11 +380,52 @@ export const lecturersAPI = {
         return inserted as Lecturer;
     },
 
-    update: (id: string, data: Partial<Lecturer>) =>
-        api.put<Lecturer>(`/admin/lecturers/${id}`, data).then(r => r.data),
+    update: async (id: string, data: Partial<Lecturer>) => {
+        const { data: updated, error } = await supabase
+            .from('lecturers')
+            .update({
+                full_name: data.full_name,
+                email: data.email,
+                phone: data.phone ?? null,
+            })
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw new Error(error.message);
+        return updated as Lecturer;
+    },
 
-    assignCourses: (id: string, course_ids: string[]) =>
-        api.post(`/admin/lecturers/${id}/courses`, { course_ids }).then(r => r.data),
+    assignCourses: async (lecturerId: string, courseCodes: string[]) => {
+        // Step 1: delete all existing assignments for this lecturer
+        const { error: delError } = await supabase
+            .from('lecturer_courses')
+            .delete()
+            .eq('lecturer_id', lecturerId);
+        if (delError) throw new Error(delError.message);
+
+        // Step 2: if there are new assignments, look up course UUIDs by code then insert
+        if (courseCodes.length > 0) {
+            const { data: courseRows, error: lookupError } = await supabase
+                .from('courses')
+                .select('id, code')
+                .in('code', courseCodes);
+            if (lookupError) throw new Error(lookupError.message);
+
+            const inserts = (courseRows || []).map((c: any) => ({
+                lecturer_id: lecturerId,
+                course_id: c.id,
+            }));
+
+            if (inserts.length > 0) {
+                const { error: insError } = await supabase
+                    .from('lecturer_courses')
+                    .insert(inserts);
+                if (insError) throw new Error(insError.message);
+            }
+        }
+
+        return true;
+    },
 
     delete: async (id: string) => {
         const { error } = await supabase.from('lecturers').delete().eq('id', id);
@@ -375,7 +522,18 @@ export const adminAPI = {
             .select('*')
             .order('created_at', { ascending: false })
             .limit(100);
-        if (error) throw new Error(error.message);
+        // Gracefully handle missing table (not yet created in DB)
+        if (error) {
+            if (
+                error.code === '42P01' ||
+                error.message.includes('does not exist') ||
+                error.message.includes('schema cache')
+            ) {
+                console.warn('`audit_log` table not found – returning empty audit log.');
+                return [];
+            }
+            throw new Error(error.message);
+        }
         return (data || []) as AuditEvent[];
     },
 
@@ -422,10 +580,28 @@ export const coursesAPI = {
     list: async () => {
         const { data, error } = await supabase.from('courses').select('*').order('created_at', { ascending: false });
         if (error) throw new Error(error.message);
-        return data as Course[];
+        return (data || []) as Course[];
     },
     create: async (data: Partial<Course>) => {
-        const { data: created, error } = await supabase.from('courses').insert(data).select().single();
+        // Build only the known column set; unknown keys cause Supabase errors
+        const payload: Record<string, unknown> = {
+            code: data.code,
+            name: data.name,
+            learning_type: data.learning_type,
+            // Relational IDs (new)
+            school_id: data.school_id || null,
+            school_name: data.school_name || null,
+            degree_id: data.degree_id || null,
+            degree_name: data.degree_name || null,
+            lecturer_id: data.lecturer_id || null,
+            lecturer: data.lecturer || null,
+            // Legacy free-text fallbacks
+            department: data.department || null,
+            intake: data.intake || null,
+            // Intake year / semester cohort (e.g. 1.1, 2.2, 3.1)
+            intake_year: data.intake_year ? parseFloat(String(data.intake_year)) : null,
+        };
+        const { data: created, error } = await supabase.from('courses').insert(payload).select().single();
         if (error) throw new Error(error.message);
         return created as Course;
     },

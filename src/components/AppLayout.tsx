@@ -56,10 +56,8 @@ export function AppLayout() {
                 </header>
 
                 {/* Page content */}
-                <main className="flex-1 overflow-auto">
-                    <div className="animate-fade-in">
-                        <Outlet />
-                    </div>
+                <main className="flex-1 overflow-hidden h-full">
+                    <Outlet />
                 </main>
             </div>
         </div>

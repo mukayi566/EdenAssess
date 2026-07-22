@@ -2,12 +2,21 @@ import { useState, useEffect } from 'react';
 import { lecturersAPI, coursesAPI } from '@/lib/api';
 import type { Lecturer, Course } from '@/types';
 import {
-    Users, Trash2, Plus, Edit3, X, Check, Search, AlertCircle
+    Users, Trash2, Plus, Edit3, X, Check, Search, AlertCircle, RefreshCw,
+    CheckCircle2, AlertOctagon, Send
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import clsx from 'clsx';
+
+// Generates a unique staff ID: LEC-{YY}{3-digit index based on ms}
+// e.g. LEC-260047  (year 2026, millisecond-derived suffix)
+function generateStaffId(): string {
+    const year = new Date().getFullYear().toString().slice(2); // "26"
+    const suffix = String(Math.floor((Date.now() % 100000) / 100)).padStart(3, '0');
+    return `LEC-${year}${suffix}`;
+}
 
 const schema = z.object({
     staff_id: z.string().min(1, 'Staff ID is required'),
@@ -17,6 +26,94 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
+// ── Success Notification Modal ─────────────────────────────────────────────────
+interface SuccessModalProps {
+    title: string;
+    message: string;
+    details?: { label: string; value: string }[];
+    onClose: () => void;
+}
+
+function SuccessModal({ title, message, details, onClose }: SuccessModalProps) {
+    return (
+        <div className="modal-overlay" style={{ zIndex: 200 }}>
+            <div className="modal-box max-w-md p-0 overflow-hidden">
+                {/* Green header strip */}
+                <div className="bg-gradient-to-br from-green-500 to-emerald-600 px-6 pt-8 pb-6 flex flex-col items-center text-center">
+                    <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mb-4 ring-4 ring-white/30">
+                        <CheckCircle2 size={36} className="text-white" strokeWidth={2} />
+                    </div>
+                    <h3 className="text-xl font-bold text-white">{title}</h3>
+                    <p className="text-sm text-green-100 mt-1">{message}</p>
+                </div>
+
+                {/* Detail rows */}
+                {details && details.length > 0 && (
+                    <div className="px-6 py-4 space-y-3 bg-gray-50 border-b">
+                        {details.map(d => (
+                            <div key={d.label} className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{d.label}</span>
+                                <span className="text-sm font-semibold text-navy-900 font-mono">{d.value}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* Delivery queued notice */}
+                <div className="px-6 py-4 flex items-start gap-3 bg-blue-50 border-b border-blue-100">
+                    <div className="mt-0.5 w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                        <Send size={13} className="text-blue-600" />
+                    </div>
+                    <div>
+                        <p className="text-xs font-semibold text-blue-800">Credential Delivery Queued</p>
+                        <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">
+                            Login credentials will be delivered to the lecturer via email and SMS.
+                            They can use their staff ID and the default password to sign in.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="px-6 py-4 flex justify-end">
+                    <button
+                        onClick={onClose}
+                        className="btn btn-primary flex items-center gap-2"
+                    >
+                        <Check size={15} />
+                        Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Error Notification Popup ───────────────────────────────────────────────────
+interface ErrorModalProps {
+    message: string;
+    onClose: () => void;
+}
+
+function ErrorModal({ message, onClose }: ErrorModalProps) {
+    return (
+        <div className="modal-overlay" style={{ zIndex: 200 }}>
+            <div className="modal-box max-w-sm p-0 overflow-hidden">
+                <div className="bg-gradient-to-br from-red-500 to-rose-600 px-6 pt-8 pb-6 flex flex-col items-center text-center">
+                    <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mb-4 ring-4 ring-white/30">
+                        <AlertOctagon size={36} className="text-white" strokeWidth={2} />
+                    </div>
+                    <h3 className="text-xl font-bold text-white">Action Failed</h3>
+                    <p className="text-sm text-red-100 mt-1">{message}</p>
+                </div>
+                <div className="px-6 py-4 flex justify-end">
+                    <button onClick={onClose} className="btn btn-secondary">Dismiss</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 export function LecturerManagement() {
     const [lecturers, setLecturers] = useState<Lecturer[]>([]);
     const [courses, setCourses] = useState<Course[]>([]);
@@ -31,6 +128,14 @@ export function LecturerManagement() {
     // Course assignments
     const [showAssignModal, setShowAssignModal] = useState<Lecturer | null>(null);
     const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
+
+    // Notification popups
+    const [successPopup, setSuccessPopup] = useState<{
+        title: string;
+        message: string;
+        details?: { label: string; value: string }[];
+    } | null>(null);
+    const [errorPopup, setErrorPopup] = useState<string | null>(null);
 
     const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
         resolver: zodResolver(schema),
@@ -60,6 +165,7 @@ export function LecturerManagement() {
         reset();
         setError('');
         setEditingLecturer(null);
+        setValue('staff_id', generateStaffId());
         setShowAddModal(true);
     };
 
@@ -84,15 +190,32 @@ export function LecturerManagement() {
         try {
             if (editingLecturer) {
                 await lecturersAPI.update(editingLecturer.id, data);
-                alert('Lecturer account updated successfully.');
+                setShowAddModal(false);
+                setSuccessPopup({
+                    title: 'Profile Updated',
+                    message: 'Lecturer account has been updated successfully.',
+                    details: [
+                        { label: 'Staff ID', value: data.staff_id },
+                        { label: 'Name', value: data.full_name },
+                        { label: 'Email', value: data.email },
+                    ],
+                });
             } else {
                 await lecturersAPI.create(data);
-                alert('Lecturer provisioned successfully. Credential delivery queued.');
+                setShowAddModal(false);
+                setSuccessPopup({
+                    title: 'Lecturer Provisioned Successfully',
+                    message: 'The lecturer account has been created and credentials are queued for delivery.',
+                    details: [
+                        { label: 'Staff ID', value: data.staff_id },
+                        { label: 'Name', value: data.full_name },
+                        { label: 'Email', value: data.email },
+                    ],
+                });
             }
-            setShowAddModal(false);
             fetchData();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to submit form.');
+            setError(err.response?.data?.detail || err.message || 'Failed to submit form.');
         }
     };
 
@@ -100,11 +223,17 @@ export function LecturerManagement() {
         if (!showAssignModal) return;
         try {
             await lecturersAPI.assignCourses(showAssignModal.id, selectedCourses);
-            alert('Course assignments updated.');
             setShowAssignModal(null);
+            setSuccessPopup({
+                title: 'Courses Assigned',
+                message: `${showAssignModal.full_name}'s course allocations have been updated.`,
+                details: [
+                    { label: 'Courses assigned', value: selectedCourses.length === 0 ? 'None' : selectedCourses.join(', ') },
+                ],
+            });
             fetchData();
         } catch (err: any) {
-            alert(err.response?.data?.detail || 'Failed to assign courses');
+            setErrorPopup(err.response?.data?.detail || err.message || 'Failed to assign courses.');
         }
     };
 
@@ -120,7 +249,7 @@ export function LecturerManagement() {
             await lecturersAPI.delete(id);
             fetchData();
         } catch (err: any) {
-            alert(err.response?.data?.detail || 'Failed to delete lecturer');
+            setErrorPopup(err.response?.data?.detail || err.message || 'Failed to delete lecturer.');
         }
     };
 
@@ -265,13 +394,33 @@ export function LecturerManagement() {
 
                         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                             <div>
-                                <label className="label">Staff ID</label>
-                                <input
-                                    {...register('staff_id')}
-                                    className={`input ${errors.staff_id ? 'error' : ''}`}
-                                    placeholder="e.g. LEC045"
-                                    disabled={!!editingLecturer}
-                                />
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="label">Staff ID</label>
+                                    {!editingLecturer && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setValue('staff_id', generateStaffId())}
+                                            className="flex items-center gap-1 text-[10px] text-navy-600 hover:text-navy-900 font-semibold transition-colors"
+                                            title="Generate a new ID"
+                                        >
+                                            <RefreshCw size={11} />
+                                            Regenerate
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="relative">
+                                    <input
+                                        {...register('staff_id')}
+                                        className={`input pr-20 font-mono tracking-wider ${errors.staff_id ? 'error' : ''} ${!editingLecturer ? 'bg-[#f0f7ff] text-navy-900' : ''}`}
+                                        placeholder="e.g. LEC-26001"
+                                        readOnly={!!editingLecturer}
+                                    />
+                                    {!editingLecturer && (
+                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-navy-100 text-navy-700 text-[9px] font-bold px-1.5 py-0.5 rounded pointer-events-none">
+                                            AUTO
+                                        </span>
+                                    )}
+                                </div>
                                 {errors.staff_id && <p className="error-msg">{errors.staff_id.message}</p>}
                             </div>
 
@@ -357,7 +506,9 @@ export function LecturerManagement() {
                                         >
                                             <div>
                                                 <p className="text-sm font-semibold text-navy-900">{course.code} - {course.name}</p>
-                                                <p className="text-[11px] text-gray-400">{course.department || course.intake || ''}</p>
+                                                <p className="text-[11px] text-gray-400">
+                                                    {course.school_name || course.department || ''}{course.degree_name ? ` · ${course.degree_name}` : ''}
+                                                </p>
                                             </div>
                                             <div className={clsx(
                                                 'w-5 h-5 rounded border flex items-center justify-center transition-colors',
@@ -389,6 +540,24 @@ export function LecturerManagement() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* ── Success Popup ──────────────────────────────────────────────── */}
+            {successPopup && (
+                <SuccessModal
+                    title={successPopup.title}
+                    message={successPopup.message}
+                    details={successPopup.details}
+                    onClose={() => setSuccessPopup(null)}
+                />
+            )}
+
+            {/* ── Error Popup ────────────────────────────────────────────────── */}
+            {errorPopup && (
+                <ErrorModal
+                    message={errorPopup}
+                    onClose={() => setErrorPopup(null)}
+                />
             )}
         </div>
     );

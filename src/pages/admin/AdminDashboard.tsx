@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { adminAPI } from '@/lib/api';
 import type { AdminStats, CalendarEvent, AuditEvent } from '@/types';
-import { GraduationCap, Users, Calendar, AlertTriangle, ArrowRight, Clock } from 'lucide-react';
+import { GraduationCap, Users, Calendar, AlertTriangle, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 
@@ -88,10 +88,6 @@ export function AdminDashboard() {
                     <p className="text-gray-500 text-sm mt-1">
                         System health, audit logging, and student roster provisioning.
                     </p>
-                </div>
-                <div className="flex items-center gap-2 text-xs bg-white border border-[#dbeeff] rounded-lg px-3 py-2 text-gray-500">
-                    <Clock size={14} />
-                    <span>System Status: <strong className="text-success-500">Operational</strong></span>
                 </div>
             </div>
 

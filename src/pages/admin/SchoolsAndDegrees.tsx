@@ -403,7 +403,7 @@ export function SchoolsAndDegrees() {
                                             value={newDegree.school_id}
                                             onChange={e => setNewDegree({ ...newDegree, school_id: e.target.value })}
                                         >
-                                            <option value="">— Select School —</option>
+                                            <option value="">Select School</option>
                                             {schools.map(s => (
                                                 <option key={s.id} value={s.id}>{s.name}</option>
                                             ))}

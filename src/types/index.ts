@@ -107,10 +107,24 @@ export interface Course {
     id: string;
     code: string;
     name: string;
+    /** Legacy free-text department (kept for backward compat) */
     department?: string;
+    /** Legacy free-text intake (kept for backward compat) */
     intake?: string;
     learning_type?: string;
+    /** FK → schools.id */
+    school_id?: string;
+    school_name?: string;
+    /** FK → degrees.id */
+    degree_id?: string;
+    degree_name?: string;
+    /** FK → lecturers.id */
+    lecturer_id?: string;
+    /** Resolved display name for the assigned lecturer */
     lecturer?: string;
+    program?: string;
+    /** Intake year – the academic year this course cohort started (e.g. 2024) */
+    intake_year?: number;
     created_at?: string;
 }
 
