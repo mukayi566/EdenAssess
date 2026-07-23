@@ -130,7 +130,7 @@ export interface Course {
 
 // ─── Question Bank ────────────────────────────────────────────────────────────
 
-export type QuestionType = 'mcq' | 'short_answer' | 'essay';
+export type QuestionType = 'mcq' | 'short_answer' | 'essay' | 'one_word';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
 export interface MCQOption {

@@ -752,55 +752,145 @@ export const degreesAPI = {
 // ─── Question Bank ─────────────────────────────────────────────────────────────
 
 export const questionsAPI = {
-    list: (params?: { course_id?: string; type?: string; difficulty?: string; topic?: string }) =>
-        api.get<Question[]>('/lecturer/questions', { params }).then(r => r.data),
+    list: async (params?: { course_id?: string; type?: string; difficulty?: string; topic?: string }) => {
+        let query = supabase.from('questions').select('*');
 
-    create: (data: Partial<Question>) =>
-        api.post<Question>('/lecturer/questions', data).then(r => r.data),
+        if (params?.course_id) query = query.eq('course_id', params.course_id);
+        if (params?.type) query = query.eq('type', params.type);
+        if (params?.difficulty) query = query.eq('difficulty', params.difficulty);
+        if (params?.topic) query = query.eq('topic', params.topic);
 
-    update: (id: string, data: Partial<Question>) =>
-        api.put<Question>(`/lecturer/questions/${id}`, data).then(r => r.data),
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (error) throw new Error(error.message);
+        return (data || []) as Question[];
+    },
 
-    delete: (id: string) => api.delete(`/lecturer/questions/${id}`).then(r => r.data),
+    create: async (data: Partial<Question>) => {
+        const { data: created, error } = await supabase.from('questions').insert(data).select().single();
+        if (error) throw new Error(error.message);
+        return created as Question;
+    },
+
+    update: async (id: string, data: Partial<Question>) => {
+        const { data: updated, error } = await supabase.from('questions').update(data).eq('id', id).select().single();
+        if (error) throw new Error(error.message);
+        return updated as Question;
+    },
+
+    delete: async (id: string) => {
+        const { error } = await supabase.from('questions').delete().eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+    },
 };
 
 // ─── Assessments ───────────────────────────────────────────────────────────────
 
 export const assessmentsAPI = {
-    list: (params?: { type?: AssessmentType }) =>
-        api.get<Assessment[]>('/lecturer/assessments', { params }).then(r => r.data),
+    list: async (params?: { type?: AssessmentType }) => {
+        let query = supabase.from('assessments').select('*');
+        if (params?.type) query = query.eq('type', params.type);
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (error) throw new Error(error.message);
+        return (data || []) as Assessment[];
+    },
 
-    get: (id: string) => api.get<Assessment>(`/lecturer/assessments/${id}`).then(r => r.data),
+    get: async (id: string) => {
+        const { data, error } = await supabase.from('assessments').select('*').eq('id', id).single();
+        if (error) throw new Error(error.message);
+        return data as Assessment;
+    },
 
-    create: (data: Partial<Assessment>) =>
-        api.post<Assessment>('/lecturer/assessments', data).then(r => r.data),
+    create: async (data: Partial<Assessment>) => {
+        const { data: created, error } = await supabase.from('assessments').insert(data).select().single();
+        if (error) throw new Error(error.message);
+        return created as Assessment;
+    },
 
-    update: (id: string, data: Partial<Assessment>) =>
-        api.put<Assessment>(`/lecturer/assessments/${id}`, data).then(r => r.data),
+    update: async (id: string, data: Partial<Assessment>) => {
+        const { data: updated, error } = await supabase.from('assessments').update(data).eq('id', id).select().single();
+        if (error) throw new Error(error.message);
+        return updated as Assessment;
+    },
 
-    publish: (id: string) =>
-        api.post(`/lecturer/assessments/${id}/publish`).then(r => r.data),
+    publish: async (id: string) => {
+        const { error } = await supabase.from('assessments').update({ status: 'published' }).eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+    },
 
-    delete: (id: string) => api.delete(`/lecturer/assessments/${id}`).then(r => r.data),
+    delete: async (id: string) => {
+        const { error } = await supabase.from('assessments').delete().eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+    },
 
-    randomQuestions: (params: { course_id: string; topic: string; count: number; difficulty?: string }) =>
-        api.get<Question[]>('/lecturer/questions/random', { params }).then(r => r.data),
+    randomQuestions: async (params: { course_id: string; topic: string; count: number; difficulty?: string }) => {
+        let query = supabase.from('questions').select('*').eq('course_id', params.course_id);
+        if (params.topic) query = query.eq('topic', params.topic);
+        if (params.difficulty && params.difficulty !== 'all') query = query.eq('difficulty', params.difficulty);
+
+        const { data, error } = await query;
+        if (error) throw new Error(error.message);
+
+        // Shuffle and take N
+        const shuffled = (data || []).sort(() => 0.5 - Math.random());
+        return shuffled.slice(0, params.count) as Question[];
+    },
 };
 
 // ─── Grading ───────────────────────────────────────────────────────────────────
 
 export const gradingAPI = {
-    queue: () => api.get<Submission[]>('/lecturer/grading/queue').then(r => r.data),
+    queue: async () => {
+        const { data, error } = await supabase.from('submissions').select('*').eq('grading_status', 'pending_review');
+        if (error) throw new Error(error.message);
+        return (data || []) as Submission[];
+    },
 
-    submission: (id: string) =>
-        api.get<{ submission: Submission; answers: SubmissionAnswer[] }>
-            (`/lecturer/grading/submissions/${id}`).then(r => r.data),
+    submission: async (id: string) => {
+        const [subRes, ansRes] = await Promise.all([
+            supabase.from('submissions').select('*').eq('id', id).single(),
+            supabase.from('submission_answers').select('*').eq('submission_id', id)
+        ]);
+        if (subRes.error) throw new Error(subRes.error.message);
+        if (ansRes.error) throw new Error(ansRes.error.message);
+        return { submission: subRes.data as Submission, answers: ansRes.data as SubmissionAnswer[] };
+    },
 
-    grade: (submission_id: string, grades: { question_id: string; marks: number }[]) =>
-        api.post(`/lecturer/grading/submissions/${submission_id}/grade`, { grades }).then(r => r.data),
+    grade: async (submission_id: string, grades: { question_id: string; marks: number }[]) => {
+        // This usually needs a more complex transaction or RPC if we update multiple answers
+        // but for now let's assume we update them one by one or it's a simplified version.
+        for (const g of grades) {
+            await supabase.from('submission_answers')
+                .update({ manual_marks: g.marks })
+                .eq('submission_id', submission_id)
+                .eq('question_id', g.question_id);
+        }
+        // Update submission status
+        await supabase.from('submissions').update({ grading_status: 'graded' }).eq('id', submission_id);
+        return true;
+    },
 
-    bulkRelease: (submission_ids: string[]) =>
-        api.post('/lecturer/grading/release', { submission_ids }).then(r => r.data),
+    bulkRelease: async (submission_ids: string[]) => {
+        const { error } = await supabase.from('submissions').update({ grading_status: 'released' }).in('id', submission_ids);
+        if (error) throw new Error(error.message);
+        return true;
+    },
 
-    lecturerStats: () => api.get<LecturerStats>('/lecturer/stats').then(r => r.data),
+    lecturerStats: async (): Promise<LecturerStats> => {
+        const [questionsCount, activeAssessments, pendingGrading, totalSubmissions] = await Promise.all([
+            supabase.from('questions').select('*', { count: 'exact', head: true }),
+            supabase.from('assessments').select('*', { count: 'exact', head: true }).in('status', ['active', 'published']),
+            supabase.from('submissions').select('*', { count: 'exact', head: true }).eq('grading_status', 'pending_review'),
+            supabase.from('submissions').select('*', { count: 'exact', head: true }),
+        ]);
+
+        return {
+            total_questions: questionsCount.count || 0,
+            active_assessments: activeAssessments.count || 0,
+            pending_grading: pendingGrading.count || 0,
+            total_submissions: totalSubmissions.count || 0,
+        };
+    },
 };

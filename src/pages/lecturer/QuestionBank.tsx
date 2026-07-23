@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { questionsAPI, coursesAPI } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import type { Question, Course } from '@/types';
 import {
-    Plus, Trash2, Edit3, X, HelpCircle, Check, Trash
+    Plus, Trash2, Edit3, X, HelpCircle, Check, Trash, AlertOctagon
 } from 'lucide-react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -12,7 +14,7 @@ import clsx from 'clsx';
 const schema = z.object({
     course_id: z.string().min(1, 'Course allocation is required'),
     topic: z.string().min(1, 'Topic tagging is required'),
-    type: z.enum(['mcq', 'short_answer', 'essay']),
+    type: z.enum(['mcq', 'short_answer', 'essay', 'one_word']),
     difficulty: z.enum(['easy', 'medium', 'hard']),
     text: z.string().min(10, 'Question text must contain at least 10 characters'),
     marks: z.number().min(1, 'Marks must be positive'),
@@ -37,6 +39,13 @@ export function QuestionBank() {
     // Modals / forms
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const { user } = useAuth();
+
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    };
 
     const { register, control, handleSubmit, watch, reset, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),
@@ -65,8 +74,45 @@ export function QuestionBank() {
                 questionsAPI.list(),
                 coursesAPI.list(),
             ]);
-            setQuestions(questionsData);
-            setCourses(coursesData);
+
+            let availableCourses = coursesData;
+            let availableQuestions = questionsData;
+
+            if (user?.role === 'lecturer') {
+                try {
+                    const { data: lecProfile } = await supabase
+                        .from('lecturers')
+                        .select('id, email')
+                        .or(`email.eq.${user.email},id.eq.${user.id}`)
+                        .maybeSingle();
+
+                    if (lecProfile) {
+                        const { data: mappings } = await supabase
+                            .from('lecturer_courses')
+                            .select('course_id')
+                            .eq('lecturer_id', lecProfile.id);
+
+                        if (mappings && mappings.length > 0) {
+                            const allowedCourseIds = mappings.map((m: any) => m.course_id);
+                            availableCourses = coursesData.filter(c => allowedCourseIds.includes(c.id));
+                            availableQuestions = questionsData.filter(q => allowedCourseIds.includes(q.course_id));
+                        } else {
+                            availableCourses = [];
+                            availableQuestions = [];
+                        }
+                    } else {
+                        availableCourses = coursesData.filter(c => c.lecturer_id === user.id);
+                        availableQuestions = questionsData.filter(q => availableCourses.some(c => c.id === q.course_id));
+                    }
+                } catch (e) {
+                    console.error('Error filtering lecturer data:', e);
+                    availableCourses = [];
+                    availableQuestions = [];
+                }
+            }
+
+            setQuestions(availableQuestions);
+            setCourses(availableCourses);
         } catch (err) {
             console.error('Error fetching questions bank details:', err);
         } finally {
@@ -118,15 +164,16 @@ export function QuestionBank() {
 
             if (editingQuestion) {
                 await questionsAPI.update(editingQuestion.id, payload as any);
-                alert('Question updated in database.');
+                showToast('Question updated successfully.');
             } else {
                 await questionsAPI.create(payload as any);
-                alert('Question saved to database.');
+                showToast('Question Successful added');
             }
             setShowAddModal(false);
             fetchData();
         } catch (err: any) {
-            alert(err.response?.data?.detail || 'Failed to persist question');
+            console.error('Submit error:', err);
+            showToast(err.message || 'Failed to persist question', 'error');
         }
     };
 
@@ -134,9 +181,11 @@ export function QuestionBank() {
         if (!confirm('Are you sure you want to delete this question from the bank? It will remove it from all draft assessments.')) return;
         try {
             await questionsAPI.delete(id);
+            showToast('Question deleted successfully.');
             fetchData();
         } catch (err: any) {
-            alert(err.response?.data?.detail || 'Failed to delete question');
+            console.error('Delete error:', err);
+            showToast(err.message || 'Failed to delete question', 'error');
         }
     };
 
@@ -187,7 +236,8 @@ export function QuestionBank() {
                     <label className="label">Question Format</label>
                     <select value={selectedType} onChange={e => setSelectedType(e.target.value)} className="input text-xs">
                         <option value="all">All Styles</option>
-                        <option value="mcq">Multiple Choice Question (MCQ)</option>
+                        <option value="mcq">Multiple Choice (MCQ)</option>
+                        <option value="one_word">One Word Answer</option>
                         <option value="short_answer">Short Answer</option>
                         <option value="essay">Comprehensive Essay</option>
                     </select>
@@ -221,10 +271,11 @@ export function QuestionBank() {
                                     <span className="badge badge-neutral text-[9px] font-mono">Topic: {q.topic}</span>
                                     <span className={clsx('badge text-[9px]',
                                         q.type === 'mcq' && 'badge-success',
+                                        q.type === 'one_word' && 'badge-info',
                                         q.type === 'short_answer' && 'badge-warning',
                                         q.type === 'essay' && 'badge-danger'
                                     )}>
-                                        {q.type === 'mcq' ? 'MCQ' : q.type === 'short_answer' ? 'Short Answer' : 'Essay'}
+                                        {q.type === 'mcq' ? 'MCQ' : q.type === 'one_word' ? 'One Word' : q.type === 'short_answer' ? 'Short Answer' : 'Essay'}
                                     </span>
                                     <span className={clsx('badge text-[9px] font-semibold',
                                         q.difficulty === 'easy' && 'badge-success',
@@ -329,6 +380,7 @@ export function QuestionBank() {
                                     <label className="label">Question Type</label>
                                     <select {...register('type')} className="input">
                                         <option value="mcq">Multiple Choice</option>
+                                        <option value="one_word">One Word Answer</option>
                                         <option value="short_answer">Short Answer</option>
                                         <option value="essay">Comprehensive Essay</option>
                                     </select>
@@ -373,7 +425,7 @@ export function QuestionBank() {
                                             onClick={() => append({ text: '', is_correct: false })}
                                             className="text-xs text-navy-600 hover:text-navy-950 font-bold hover:underline"
                                         >
-                                            + Add Option Option
+                                            + Add Option
                                         </button>
                                     </div>
                                     <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1">
@@ -432,6 +484,32 @@ export function QuestionBank() {
                             </div>
                         </form>
                     </div>
+                </div>
+            )}
+
+            {/* Toast Notification */}
+            {toast && (
+                <div className={clsx(
+                    'fixed bottom-8 right-8 flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl z-[9999] animate-in fade-in slide-in-from-bottom-4 duration-300',
+                    toast.type === 'success' ? 'bg-green-600 border border-green-700' : 'bg-red-600 border border-red-700'
+                )}>
+                    <div className="text-white">
+                        {toast.type === 'success' ? <Check size={18} strokeWidth={3} /> : <AlertOctagon size={18} strokeWidth={3} />}
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-white font-bold text-sm tracking-wide">
+                            {toast.type === 'success' ? 'SYSTEM NOTIFICATION' : 'ACTION ERROR'}
+                        </span>
+                        <span className="text-white/90 text-xs font-medium uppercase tracking-wider">
+                            {toast.message}
+                        </span>
+                    </div>
+                    <button 
+                        onClick={() => setToast(null)}
+                        className="ml-4 p-1 hover:bg-white/10 rounded-full transition-colors"
+                    >
+                        <X size={14} className="text-white/70" />
+                    </button>
                 </div>
             )}
         </div>

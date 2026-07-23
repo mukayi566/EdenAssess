@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { assessmentsAPI, coursesAPI, questionsAPI, lecturersAPI } from '@/lib/api';
+import { assessmentsAPI, coursesAPI, questionsAPI } from '@/lib/api';
 import type { Course, Question, Assessment, AssessmentType, LatePolicy } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import {
-    ArrowLeft, ArrowRight, Check, Shield, Info
+    ArrowLeft, ArrowRight, Check, Shield, Info, AlertOctagon, X
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -15,6 +15,12 @@ export function CreateAssessment() {
     const [courses, setCourses] = useState<Course[]>([]);
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(true);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    };
 
     // Wizard state
     const [step, setStep] = useState(1);
@@ -50,13 +56,14 @@ export function CreateAssessment() {
                 ]);
 
                 let availableCourses = coursesData;
+                let availableQuestions = questionsData;
                 if (user?.role === 'lecturer') {
                     // Try to get their lecturer ID
                     try {
                         const { data: lecProfile } = await supabase
                             .from('lecturers')
-                            .select('id')
-                            .eq('email', user.email)
+                            .select('id, email')
+                            .or(`email.eq.${user.email},id.eq.${user.id}`)
                             .maybeSingle();
 
                         if (lecProfile) {
@@ -68,24 +75,27 @@ export function CreateAssessment() {
                             if (mappings && mappings.length > 0) {
                                 const allowedCourseIds = mappings.map((m: any) => m.course_id);
                                 availableCourses = coursesData.filter(c => allowedCourseIds.includes(c.id));
+                                availableQuestions = questionsData.filter(q => allowedCourseIds.includes(q.course_id));
                             } else {
                                 // Strictly empty if no allocations
                                 availableCourses = [];
+                                availableQuestions = [];
                             }
                         } else {
                             // If user is lecturer but not in lecturers table, fallback to legacy
                             availableCourses = coursesData.filter(c => c.lecturer_id === user.id);
-                            if (availableCourses.length === 0) availableCourses = [];
+                            availableQuestions = questionsData.filter(q => availableCourses.some(c => c.id === q.course_id));
                         }
                     } catch (e) {
                         console.error('Error fetching lecturer courses:', e);
                         // Safe fallback
                         availableCourses = [];
+                        availableQuestions = [];
                     }
                 }
 
                 setCourses(availableCourses);
-                setQuestions(questionsData);
+                setQuestions(availableQuestions);
             } catch (err) {
                 console.error('Error loading data:', err);
             } finally {
@@ -100,23 +110,23 @@ export function CreateAssessment() {
 
     const handleNext = () => {
         if (step === 1 && (!title || !courseId)) {
-            alert('Please fill out title and select course curriculum before proceeding.');
+            showToast('Please fill out title and select course curriculum before proceeding.', 'error');
             return;
         }
         if (step === 2 && (!startTime || !endTime)) {
-            alert('Please select both start and end availability window times.');
+            showToast('Please select both start and end availability window times.', 'error');
             return;
         }
         if (new Date(startTime) >= new Date(endTime)) {
-            alert('Start availability window must precede end availability lockouts.');
+            showToast('Start availability window must precede end availability lockouts.', 'error');
             return;
         }
         if (step === 3 && selectionMode === 'manual' && selectedQuestionIds.length === 0) {
-            alert('Please select at least one question item from the Manual Question Store List.');
+            showToast('Please select at least one question item from the Manual Question Store List.', 'error');
             return;
         }
         if (step === 3 && selectionMode === 'random' && !randomTopic) {
-            alert('Please enter a target topic tags keyword to randomize questions from.');
+            showToast('Please enter a target topic tags keyword to randomize questions from.', 'error');
             return;
         }
         setStep(s => s + 1);
@@ -132,7 +142,7 @@ export function CreateAssessment() {
 
     const handleRandomizeSelect = async () => {
         if (!courseId) {
-            alert('Please select a course in Step 1 before matching topic questions.');
+            showToast('Please select a course in Step 1 before matching topic questions.', 'error');
             return;
         }
         try {
@@ -144,13 +154,13 @@ export function CreateAssessment() {
             });
 
             if (matched.length === 0) {
-                alert('No questions matching this course topic tags found in the store.');
+                showToast('No questions matching this course topic tags found in the store.', 'error');
                 return;
             }
             setSelectedQuestionIds(matched.map(q => q.id));
-            alert(`Success! Generated random selection of ${matched.length} question packages.`);
+            showToast(`Success! Generated random selection of ${matched.length} question packages.`);
         } catch (err: any) {
-            alert(err.response?.data?.detail || 'Randomization generation failed');
+            showToast(err.message || 'Randomization generation failed', 'error');
         }
     };
 
@@ -169,13 +179,15 @@ export function CreateAssessment() {
                 tab_switch_logging: tabSwitchLogging,
                 question_ids: selectedQuestionIds,
                 status: publishImmediate ? 'published' : 'draft',
+                created_by: user?.id
             };
 
             await assessmentsAPI.create(payload);
-            alert(`Assessment saved as ${publishImmediate ? 'PUBLISHED' : 'DRAFT'}`);
-            navigate('/lecturer/assessments');
+            showToast(`Assessment saved as ${publishImmediate ? 'PUBLISHED' : 'DRAFT'}`);
+            setTimeout(() => navigate('/lecturer/assessments'), 1500);
         } catch (err: any) {
-            alert(err.response?.data?.detail || 'Failed to create assessment');
+            console.error('Submission error:', err);
+            showToast(err.message || 'Failed to create assessment', 'error');
         }
     };
 
@@ -362,7 +374,12 @@ export function CreateAssessment() {
                                                         <div className="flex-1 pr-4">
                                                             <p className="text-sm font-semibold">{q.text}</p>
                                                             <div className="flex items-center gap-2 mt-1">
-                                                                <span className="badge badge-neutral text-[9px]">{q.type.toUpperCase()}</span>
+                                                                <span className={clsx('badge text-[9px]',
+                                                                    q.type === 'mcq' && 'badge-success',
+                                                                    q.type === 'one_word' && 'badge-info',
+                                                                    q.type === 'short_answer' && 'badge-warning',
+                                                                    q.type === 'essay' && 'badge-danger'
+                                                                )}>{q.type.replace('_', ' ').toUpperCase()}</span>
                                                                 <span className="badge badge-info text-[9px]">{q.difficulty}</span>
                                                                 <span className="text-[10px] text-gray-400 font-mono">Topic: {q.topic}</span>
                                                             </div>
@@ -599,6 +616,31 @@ export function CreateAssessment() {
                     </>
                 )}
             </div>
+            {/* Toast Notification */}
+            {toast && (
+                <div className={clsx(
+                    'fixed bottom-8 right-8 flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl z-[9999] animate-in fade-in slide-in-from-bottom-4 duration-300',
+                    toast.type === 'success' ? 'bg-green-600 border border-green-700' : 'bg-red-600 border border-red-700'
+                )}>
+                    <div className="text-white">
+                        {toast.type === 'success' ? <Check size={18} strokeWidth={3} /> : <AlertOctagon size={18} strokeWidth={3} />}
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-white font-bold text-sm tracking-wide">
+                            {toast.type === 'success' ? 'SYSTEM NOTIFICATION' : 'ACTION ERROR'}
+                        </span>
+                        <span className="text-white/90 text-xs font-medium uppercase tracking-wider">
+                            {toast.message}
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => setToast(null)}
+                        className="ml-4 p-1 hover:bg-white/10 rounded-full transition-colors"
+                    >
+                        <X size={14} className="text-white/70" />
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
