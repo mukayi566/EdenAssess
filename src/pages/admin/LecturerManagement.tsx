@@ -3,7 +3,7 @@ import { lecturersAPI, coursesAPI } from '@/lib/api';
 import type { Lecturer, Course } from '@/types';
 import {
     Users, Trash2, Plus, Edit3, X, Check, Search, AlertCircle, RefreshCw,
-    CheckCircle2, AlertOctagon, Send
+    CheckCircle2, AlertOctagon, Send, Copy, Eye, EyeOff
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,6 +17,13 @@ function generateStaffId(): string {
     const suffix = String(Math.floor((Date.now() % 100000) / 100)).padStart(3, '0');
     return `LEC-${year}${suffix}`;
 }
+
+function generateDefaultPassword(staffId: string): string {
+    const currentYear = new Date().getFullYear();
+    const uniquePart = (staffId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase();
+    return `Eden${currentYear}!${uniquePart}`;
+}
+
 
 const schema = z.object({
     staff_id: z.string().min(1, 'Staff ID is required'),
@@ -136,6 +143,14 @@ export function LecturerManagement() {
         details?: { label: string; value: string }[];
     } | null>(null);
     const [errorPopup, setErrorPopup] = useState<string | null>(null);
+    const [provisionedCredentials, setProvisionedCredentials] = useState<{ id: string; email: string; password: string } | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
+    const [toastMessage, setToastMessage] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToastMessage({ message, type });
+        setTimeout(() => setToastMessage(null), 4000);
+    };
 
     const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
         resolver: zodResolver(schema),
@@ -201,17 +216,16 @@ export function LecturerManagement() {
                     ],
                 });
             } else {
-                await lecturersAPI.create(data);
+                const defaultPassword = generateDefaultPassword(data.staff_id);
+                const result = await lecturersAPI.create({ ...data, temp_password: defaultPassword });
                 setShowAddModal(false);
-                setSuccessPopup({
-                    title: 'Lecturer Provisioned Successfully',
-                    message: 'The lecturer account has been created and credentials are queued for delivery.',
-                    details: [
-                        { label: 'Staff ID', value: data.staff_id },
-                        { label: 'Name', value: data.full_name },
-                        { label: 'Email', value: data.email },
-                    ],
+                setProvisionedCredentials({
+                    id: data.staff_id,
+                    email: data.email,
+                    password: (result as any).temp_password || defaultPassword,
                 });
+                setShowPassword(false);
+                showToast('Lecturer provisioned successfully.');
             }
             fetchData();
         } catch (err: any) {
@@ -558,6 +572,96 @@ export function LecturerManagement() {
                     message={errorPopup}
                     onClose={() => setErrorPopup(null)}
                 />
+            )}
+
+            {/* Custom Toast Notification */}
+            {toastMessage && (
+                <div className={clsx(
+                    "fixed bottom-8 right-8 px-5 py-3.5 rounded-lg shadow-xl text-sm font-semibold text-white z-[100] flex items-center gap-2 transition-all transform",
+                    toastMessage.type === 'success' ? 'bg-green-600 border border-green-700' : 'bg-red-600 border border-red-700'
+                )}>
+                    {toastMessage.type === 'success' ? <Check size={16} /> : <AlertOctagon size={16} />}
+                    <span>{toastMessage.message}</span>
+                </div>
+            )}
+
+            {/* Post-Provisioning Credentials Modal */}
+            {provisionedCredentials && (
+                <div className="modal-overlay z-[200]">
+                    <div className="modal-box max-w-sm p-6 text-center animate-in zoom-in-95 duration-200">
+                        <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Check size={26} className="text-green-600" />
+                        </div>
+                        <h3 className="text-xl font-bold text-navy-900 mb-1">Account Provisioned!</h3>
+                        <p className="text-xs text-gray-500 mb-5">Share these login credentials with the lecturer securely. They must change their password on first login.</p>
+
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5 text-left space-y-4">
+                            {/* Staff ID */}
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Staff ID</p>
+                                <div className="flex items-center justify-between bg-white border px-2.5 py-1.5 rounded">
+                                    <span className="font-mono text-sm text-navy-900">{provisionedCredentials.id}</span>
+                                    <button
+                                        onClick={() => { navigator.clipboard.writeText(provisionedCredentials.id); showToast('Staff ID copied!'); }}
+                                        className="text-gray-400 hover:text-navy-700 transition-colors"
+                                        title="Copy"
+                                    >
+                                        <Copy size={13} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Email */}
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Email Address</p>
+                                <div className="flex items-center justify-between bg-white border px-2.5 py-1.5 rounded">
+                                    <span className="font-mono text-sm text-navy-900">{provisionedCredentials.email}</span>
+                                    <button
+                                        onClick={() => { navigator.clipboard.writeText(provisionedCredentials.email); showToast('Email copied!'); }}
+                                        className="text-gray-400 hover:text-navy-700 transition-colors"
+                                        title="Copy"
+                                    >
+                                        <Copy size={13} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Default Password */}
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Default Password</p>
+                                <div className="flex items-center justify-between bg-white border border-amber-300 px-2.5 py-2 rounded gap-2">
+                                    <span className="font-mono text-base font-bold text-navy-900 tracking-widest flex-1">
+                                        {showPassword ? provisionedCredentials.password : '•'.repeat(provisionedCredentials.password.length)}
+                                    </span>
+                                    <button
+                                        onClick={() => setShowPassword(v => !v)}
+                                        className="text-gray-400 hover:text-navy-700 transition-colors"
+                                        title={showPassword ? 'Hide' : 'Reveal'}
+                                    >
+                                        {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                    <button
+                                        onClick={() => { navigator.clipboard.writeText(provisionedCredentials.password); showToast('Password copied!'); }}
+                                        className="text-gray-400 hover:text-navy-700 transition-colors"
+                                        title="Copy password"
+                                    >
+                                        <Copy size={13} />
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-amber-600 mt-1.5 flex items-center gap-1">
+                                    ⚠ Lecturer must change this password on first login.
+                                </p>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => { setProvisionedCredentials(null); setShowPassword(false); }}
+                            className="btn btn-primary w-full"
+                        >
+                            Done
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );

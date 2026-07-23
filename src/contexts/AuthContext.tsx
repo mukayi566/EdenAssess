@@ -81,8 +81,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [refreshUser]);
 
     const login = async (username: string, password: string) => {
+        let authEmail = username;
+
+        if (!username.includes('@')) {
+            // Attempt to resolve staff ID to email via lecturers table
+            const { data: lec } = await supabase
+                .from('lecturers')
+                .select('email')
+                .eq('staff_id', username)
+                .maybeSingle();
+
+            if (lec?.email) {
+                authEmail = lec.email;
+            } else {
+                // Fallback to admins table
+                const { data: adm } = await supabase
+                    .from('admins')
+                    .select('email')
+                    .eq('staff_id', username)
+                    .maybeSingle();
+
+                if (adm?.email) {
+                    authEmail = adm.email;
+                } else {
+                    // Fallback to old users table
+                    const { data: oldUser } = await supabase
+                        .from('users')
+                        .select('email')
+                        .eq('student_id', username) // For users table it was sometimes mapped to student_id or staff_id
+                        .maybeSingle();
+                    if (oldUser?.email) {
+                        authEmail = oldUser.email;
+                    }
+                }
+            }
+        }
+
         const { error } = await supabase.auth.signInWithPassword({
-            email: username,
+            email: authEmail,
             password: password,
         });
         if (error) throw error;

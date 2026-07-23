@@ -105,12 +105,12 @@ export function LoginPage() {
 
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                         <div>
-                            <label className="label" htmlFor="username">Username / Staff ID</label>
+                            <label className="label" htmlFor="username">Admin / Staff Email</label>
                             <input
                                 id="username"
                                 {...register('username')}
                                 className={`input ${errors.username ? 'error' : ''}`}
-                                placeholder="e.g. staff001 or U2024001"
+                                placeholder="e.g. [EMAIL_ADDRESS]"
                                 autoComplete="username"
                             />
                             {errors.username && <p className="error-msg">{errors.username.message}</p>}

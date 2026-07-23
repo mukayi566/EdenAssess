@@ -361,7 +361,87 @@ export const lecturersAPI = {
         })) as Lecturer[];
     },
 
-    create: async (data: Partial<Lecturer>) => {
+    create: async (data: Partial<Lecturer> & { temp_password?: string }) => {
+        const tempPassword = data.temp_password || '';
+        const authEmail = data.email;
+
+        // ── Step 1: Create Supabase Auth user via direct REST API ─────────────
+        if (!supabaseServiceRoleKey) {
+            console.warn('[provision] VITE_SUPABASE_SERVICE_ROLE_KEY not set — skipping auth user creation.');
+        } else if (authEmail) {
+            const adminApiUrl = `${supabaseUrl}/auth/v1/admin/users`;
+            console.log('[provision] POST', adminApiUrl, 'for', authEmail);
+
+            const createRes = await fetch(adminApiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseServiceRoleKey}`,
+                    'apikey': supabaseServiceRoleKey,
+                },
+                body: JSON.stringify({
+                    email: authEmail,
+                    password: tempPassword,
+                    email_confirm: true,
+                    user_metadata: {
+                        full_name: data.full_name,
+                        staff_id: data.staff_id,
+                        role: 'lecturer',
+                    },
+                }),
+            });
+
+            const createJson = await createRes.json();
+
+            if (!createRes.ok) {
+                const errMsg: string =
+                    createJson?.error_description ||
+                    createJson?.message ||
+                    createJson?.msg ||
+                    createJson?.error ||
+                    JSON.stringify(createJson);
+
+                const isAlreadyExists =
+                    errMsg.toLowerCase().includes('already registered') ||
+                    errMsg.toLowerCase().includes('already been registered') ||
+                    errMsg.toLowerCase().includes('user already exists') ||
+                    errMsg.toLowerCase().includes('email already');
+
+                if (isAlreadyExists) {
+                    console.log('[provision] User already exists, fetching to update password...');
+                    const listRes = await fetch(
+                        `${supabaseUrl}/auth/v1/admin/users?email=${encodeURIComponent(authEmail)}`,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${supabaseServiceRoleKey}`,
+                                'apikey': supabaseServiceRoleKey,
+                            },
+                        }
+                    );
+                    const listJson = await listRes.json();
+                    const found = (listJson?.users || []).find(
+                        (u: { email?: string }) => u.email === authEmail
+                    );
+                    if (found?.id) {
+                        const authUserId = found.id;
+                        await fetch(`${supabaseUrl}/auth/v1/admin/users/${authUserId}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${supabaseServiceRoleKey}`,
+                                'apikey': supabaseServiceRoleKey,
+                            },
+                            body: JSON.stringify({ password: tempPassword, email_confirm: true }),
+                        });
+                        console.log('[provision] Reset password for existing user:', authUserId);
+                    }
+                } else {
+                    throw new Error(`Failed to create auth account for ${authEmail}: ${errMsg}`);
+                }
+            }
+        }
+
+        // ── Step 2: Insert into the dedicated lecturers table ────
         const { data: inserted, error } = await supabase
             .from('lecturers')
             .insert({
@@ -369,6 +449,7 @@ export const lecturersAPI = {
                 full_name: data.full_name,
                 email: data.email,
                 phone: data.phone || null,
+                temp_password: tempPassword || null,
                 sms_status: 'pending',
                 email_status: 'pending',
                 is_first_login: true,
@@ -376,8 +457,12 @@ export const lecturersAPI = {
             .select()
             .single();
 
-        if (error) throw new Error(error.message);
-        return inserted as Lecturer;
+        if (error) {
+            console.error('Insert error:', error);
+            throw new Error(error.message);
+        }
+
+        return { ...inserted, temp_password: inserted.temp_password || null } as Lecturer & { temp_password?: string | null };
     },
 
     update: async (id: string, data: Partial<Lecturer>) => {
@@ -488,11 +573,15 @@ export const adminsAPI = {
 export const adminAPI = {
     stats: async (): Promise<AdminStats> => {
         // Count from dedicated role tables; fall back to users table if not yet migrated
-        const [studentsRes, lecturersRes, coursesRes, activeAssessmentsRes] = await Promise.all([
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const [studentsRes, lecturersRes, coursesRes, activeAssessmentsRes, flaggedRes] = await Promise.all([
             supabase.from('students').select('*', { count: 'exact', head: true }),
             supabase.from('lecturers').select('*', { count: 'exact', head: true }),
             supabase.from('courses').select('*', { count: 'exact', head: true }),
-            supabase.from('assessments').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+            supabase.from('assessments').select('*', { count: 'exact', head: true }).in('status', ['active', 'published']),
+            supabase.from('proctoring_flags').select('*', { count: 'exact', head: true }).gte('flagged_at', today.toISOString()),
         ]);
 
         // Fall back to users table for counts if dedicated tables don't exist
@@ -512,7 +601,7 @@ export const adminAPI = {
             total_lecturers: lecturersCount || 0,
             total_courses: coursesRes.count || 0,
             active_assessments: activeAssessmentsRes.count || 0,
-            flagged_sessions_today: 0,
+            flagged_sessions_today: flaggedRes.count || 0,
         };
     },
 
@@ -549,13 +638,16 @@ export const adminAPI = {
     calendar: async (): Promise<CalendarEvent[]> => {
         const { data, error } = await supabase
             .from('assessments')
-            .select('id, title, course_name, type, start_time, end_time, status')
+            .select(`
+                id, title, type, start_time, end_time, status,
+                courses ( name )
+            `)
             .order('start_time', { ascending: true });
         if (error) throw new Error(error.message);
         return (data || []).map((a: any) => ({
             id: a.id,
             title: a.title,
-            course: a.course_name || '',
+            course: a.courses?.name || '',
             type: a.type,
             start: a.start_time,
             end: a.end_time,

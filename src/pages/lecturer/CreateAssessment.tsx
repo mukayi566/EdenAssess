@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { assessmentsAPI, coursesAPI, questionsAPI } from '@/lib/api';
+import { assessmentsAPI, coursesAPI, questionsAPI, lecturersAPI } from '@/lib/api';
 import type { Course, Question, Assessment, AssessmentType, LatePolicy } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import {
     ArrowLeft, ArrowRight, Check, Shield, Info
 } from 'lucide-react';
@@ -9,6 +11,7 @@ import clsx from 'clsx';
 
 export function CreateAssessment() {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [courses, setCourses] = useState<Course[]>([]);
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(true);
@@ -45,7 +48,43 @@ export function CreateAssessment() {
                     coursesAPI.list(),
                     questionsAPI.list(),
                 ]);
-                setCourses(coursesData);
+
+                let availableCourses = coursesData;
+                if (user?.role === 'lecturer') {
+                    // Try to get their lecturer ID
+                    try {
+                        const { data: lecProfile } = await supabase
+                            .from('lecturers')
+                            .select('id')
+                            .eq('email', user.email)
+                            .maybeSingle();
+
+                        if (lecProfile) {
+                            const { data: mappings } = await supabase
+                                .from('lecturer_courses')
+                                .select('course_id')
+                                .eq('lecturer_id', lecProfile.id);
+
+                            if (mappings && mappings.length > 0) {
+                                const allowedCourseIds = mappings.map((m: any) => m.course_id);
+                                availableCourses = coursesData.filter(c => allowedCourseIds.includes(c.id));
+                            } else {
+                                // Strictly empty if no allocations
+                                availableCourses = [];
+                            }
+                        } else {
+                            // If user is lecturer but not in lecturers table, fallback to legacy
+                            availableCourses = coursesData.filter(c => c.lecturer_id === user.id);
+                            if (availableCourses.length === 0) availableCourses = [];
+                        }
+                    } catch (e) {
+                        console.error('Error fetching lecturer courses:', e);
+                        // Safe fallback
+                        availableCourses = [];
+                    }
+                }
+
+                setCourses(availableCourses);
                 setQuestions(questionsData);
             } catch (err) {
                 console.error('Error loading data:', err);
@@ -53,8 +92,11 @@ export function CreateAssessment() {
                 setLoading(false);
             }
         }
-        load();
-    }, []);
+
+        if (user) {
+            load();
+        }
+    }, [user?.id, user?.email, user?.role]);
 
     const handleNext = () => {
         if (step === 1 && (!title || !courseId)) {
